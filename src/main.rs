@@ -1,7 +1,7 @@
 use three_d::{
-    AmbientLight, Angle, Axes, Camera, ClearState, ColorMaterial, CpuMaterial, CpuMesh, Cull,
-    DirectionalLight, FrameOutput, Geometry, Gm, Mat4, Mesh, Model, PhysicalMaterial, Srgba,
-    Viewport, Window, WindowSettings, degrees, radians, vec3,
+    AmbientLight, Axes, Camera, ClearState, ColorMaterial, CpuMaterial, CpuMesh, CpuModel, Cull,
+    DirectionalLight, FrameOutput, Gm, Mat4, Matrix4, Mesh, Model, OrbitControl, PhysicalMaterial,
+    Srgba, Viewport, Window, WindowSettings, degrees, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -21,68 +21,61 @@ fn main() {
     let context = window.gl();
     let mut gui = three_d::GUI::new(&context);
 
-    let axes = Gm::new(Axes::new(&context, 0.01, 0.5), ColorMaterial::default());
+    let axes = Gm::new(Axes::new(&context, 0.01, 10.0), ColorMaterial::default());
+
+    let mut load_teapot = three_d_asset::io::load(&["meshes/suzanne.obj"]).unwrap();
+    let model: CpuModel = load_teapot.deserialize("suzanne.obj").unwrap();
+    let mut suzanne = Model::<PhysicalMaterial>::new(&context, &model).unwrap();
+
+    suzanne.iter_mut().for_each(|m| {
+        m.material.render_states.cull = Cull::Back;
+        m.set_transformation(Mat4::from_scale(0.2) * Matrix4::from_translation(vec3(0., 0.3, 0.)));
+    });
+
+    suzanne.iter_mut().for_each(|m| {
+        m.material = PhysicalMaterial::new_opaque(
+            &context,
+            &CpuMaterial {
+                albedo: Srgba::new_opaque(170, 169, 173),
+                roughness: 0.7,
+                metallic: 0.8,
+                ..Default::default()
+            },
+        )
+    });
 
     let ambient = AmbientLight::new(&context, 0.4, Srgba::WHITE);
-    let directional = DirectionalLight::new(&context, 2.0, Srgba::WHITE, vec3(-1.0, -1.0, -1.0));
-
-    let mut load_teapot = three_d_asset::io::load(&["meshes/teapot.obj"]).unwrap();
-    let model = load_teapot.deserialize("teapot.obj").unwrap();
-    let mut teapot: Gm<_, _> = Model::<PhysicalMaterial>::new(&context, &model)
-        .unwrap()
-        .remove(0)
-        .into();
-    teapot.material.render_states.cull = Cull::Back;
-    teapot.set_transformation(Mat4::from_translation(vec3(2.0, -2.0, 0.0)));
+    let mut directional = DirectionalLight::new(
+        &context,
+        10.0,
+        Srgba::new_opaque(204, 178, 127),
+        vec3(0.0, -1.0, -1.0),
+    );
 
     let mut model_scale = 0.3;
-    let mut time_scale = 0.005;
-
     let mut cpu_plane = CpuMesh::square();
 
     cpu_plane
         .transform(
-            Mat4::from_translation(vec3(0.0, -1.0, 0.0))
+            Mat4::from_translation(vec3(0.0, 0.0, 0.0))
                 * Mat4::from_scale(10.0)
                 * Mat4::from_angle_x(degrees(-90.0)),
         )
         .unwrap();
 
-    let mut plane = Gm::new(
+    let plane = Gm::new(
         Mesh::new(&context, &cpu_plane),
         PhysicalMaterial::new_opaque(
             &context,
             &CpuMaterial {
-                albedo: Srgba::new_opaque(128, 200, 70),
+                albedo: Srgba::new_opaque(128, 0, 70),
                 ..Default::default()
             },
         ),
     );
 
-    teapot.set_animation(move |time| {
-        Mat4::new(
-            1.,
-            0.,
-            0.,
-            0.,
-            0.,
-            radians(time).cos(),
-            -radians(time).sin(),
-            0.,
-            0.,
-            radians(time).sin(),
-            radians(time).cos(),
-            0.,
-            0.,
-            0.,
-            0.,
-            1.,
-        ) * Mat4::from_angle_y(radians(time))
-            * Mat4::from_translation(vec3((time).sin(), 0., 0.))
-    });
-
-    let mut camera_position = vec3(0., 0., 2.);
-    let target = vec3(0., 0., 0.);
+    let camera_position = vec3(0., 0., 2.);
+    let target = vec3(0., 0.5, 0.);
     let up_v = vec3(0., 1., 0.);
 
     let mut camera = Camera::new_perspective(
@@ -94,6 +87,9 @@ fn main() {
         0.1,
         10.0,
     );
+
+    let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
+    let mut metalic = 0.0;
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -108,17 +104,8 @@ fn main() {
 
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     ui.heading("Debug Panel");
-                    ui.add(
-                        Slider::new(&mut camera_position.x, -5.0..=5.0).text("Camera x position"),
-                    );
-                    ui.add(
-                        Slider::new(&mut camera_position.y, -5.0..=5.0).text("Camera y position"),
-                    );
-                    ui.add(
-                        Slider::new(&mut camera_position.z, -5.0..=5.0).text("Camera z position"),
-                    );
+                    ui.add(Slider::new(&mut metalic, 0.0..=1.0).text("Model metalic"));
                     ui.add(Slider::new(&mut model_scale, 0.3..=0.1).text("Model scale"));
-                    ui.add(Slider::new(&mut time_scale, 0.005..=0.00005).text("Time scale"));
                 });
 
                 panel_width = gui_context.used_rect().width();
@@ -134,19 +121,29 @@ fn main() {
         };
 
         camera.set_viewport(viewport);
-        camera.set_view(camera_position, target, up_v);
+        control.handle_events(&mut camera, &mut frame_input.events);
 
-        teapot.set_transformation(Mat4::from_scale(model_scale));
-        teapot.animate(frame_input.accumulated_time as f32 * time_scale);
+        suzanne.iter_mut().for_each(|m| {
+            m.set_transformation(
+                Mat4::from_translation(vec3(0., 0.5, 0.)) * Mat4::from_scale(model_scale),
+            )
+        });
+
+        suzanne.iter_mut().for_each(|m| {
+            m.material.metallic = metalic;
+        });
+
+        directional.generate_shadow_map(1024, &suzanne);
 
         frame_input
             .screen()
             // Clear the color and depth of the screen render target
-            .clear(ClearState::color_and_depth(0., 0., 0., 1.0, 1.0))
+            .clear(ClearState::color_and_depth(0.8, 0.8, 0.7, 1.0, 1.0))
             // Render the triangle with the color material which uses the per vertex colors defined at construction
+            .render(&camera, suzanne.into_iter(), &[&ambient, &directional])
             .render(
                 &camera,
-                teapot.into_iter().chain(&plane).chain(&axes),
+                plane.into_iter().chain(&axes),
                 &[&ambient, &directional],
             )
             .write(|| gui.render())
