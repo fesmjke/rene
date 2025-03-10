@@ -1,13 +1,56 @@
+use core::f32;
 use std::path::Path;
-
 use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
-    Cull, DirectionalLight, FrameOutput, Gm, Mat4, Matrix4, Mesh, Model, OrbitControl,
-    PhysicalMaterial, Srgba, Viewport, Window, WindowSettings, degrees, vec3,
+    Cull, DirectionalLight, FrameOutput, Gm, Indices, InnerSpace, Mat4, Matrix4, Mesh, Model,
+    OrbitControl, PhysicalMaterial, Positions, Srgba, Vec3, Viewport, Window, WindowSettings,
+    degrees, vec3,
 };
+use three_d_asset::TriMesh;
 
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 720;
+
+type TubePath = Vec<Vec3>;
+
+fn tube_path(path: &TubePath, angle_subdivisions: i32, scale: f32) -> TriMesh {
+    let mut positions: Vec<Vec3> = Vec::new();
+    let mut indices = Vec::new();
+
+    for point in path.iter() {
+        for j in 0..angle_subdivisions {
+            let angle = 2.0 * std::f32::consts::PI * j as f32 / angle_subdivisions as f32;
+
+            positions.push(Vec3::new(
+                point.x * scale,
+                (point.y + angle.cos()) * scale,
+                (point.z + angle.sin()) * scale,
+            ));
+        }
+    }
+
+    for i in 0..(path.len() - 1) as i32 {
+        for j in 0..angle_subdivisions {
+            indices.push((i * angle_subdivisions + j) as u16);
+            indices.push((i * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+
+            indices.push((i * angle_subdivisions + j) as u16);
+            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+            indices.push(((i + 1) * angle_subdivisions + j) as u16);
+        }
+    }
+
+    let mut mesh = TriMesh {
+        positions: Positions::F32(positions),
+        indices: Indices::U16(indices),
+        ..Default::default()
+    };
+
+    mesh.compute_normals();
+
+    mesh
+}
 
 // sync model creation
 fn create_model(path: &Path, context: &Context) -> Gm<Mesh, PhysicalMaterial> {
@@ -25,6 +68,36 @@ fn create_model(path: &Path, context: &Context) -> Gm<Mesh, PhysicalMaterial> {
         .into();
 
     model
+}
+
+fn generate_sine_curve(
+    start: Vec3,
+    direction: Vec3,
+    amplitude: f32,
+    period: f32,
+    length: f32,
+    points_count: usize,
+) -> Vec<Vec3> {
+    let mut points = Vec::new();
+
+    let direction = direction.normalize();
+
+    let arbitrary = if direction.x.abs() < 0.9 {
+        vec3(1., 0., 0.)
+    } else {
+        vec3(0., 1., 0.)
+    };
+
+    let up = direction.cross(arbitrary).normalize();
+
+    for i in 0..points_count {
+        let t = i as f32 / (points_count - 1) as f32 * length;
+        let wave_offset = amplitude * (period * t).sin();
+        let point = start + t * direction + wave_offset * up;
+        points.push(point);
+    }
+
+    points
 }
 
 fn main() {
@@ -81,6 +154,58 @@ fn main() {
         ),
     );
 
+    let mut cylinder = Gm::new(
+        Mesh::new(&context, &CpuMesh::cylinder(3)),
+        PhysicalMaterial::new_opaque(
+            &context,
+            &CpuMaterial {
+                albedo: Srgba {
+                    r: 0,
+                    g: 255,
+                    b: 0,
+                    a: 200,
+                },
+                ..Default::default()
+            },
+        ),
+    );
+
+    cylinder.set_transformation(
+        Mat4::from_angle_z(degrees(90.0)) * Mat4::from_translation(vec3(0., 0., 0.)),
+    );
+
+    let sphere_sub = 16;
+
+    let start = Vec3::new(0.0, 0.0, 0.0); // Start position
+    let direction = Vec3::new(10.0, 4.0, 3.0); // Along X-axis
+    let amplitude = 1.0;
+    let period = 2.0 * f32::consts::PI / 1.0; // One full wave every 5 units
+    let length = 24.0; // Total length of the sine wave
+    let points_count = 16; // Number of points to generate
+
+    let sin_path = generate_sine_curve(start, direction, amplitude, period, length, points_count);
+
+    for point in sin_path.iter() {
+        let mut debug_sphere = Gm::new(
+            Mesh::new(&context, &CpuMesh::sphere(sphere_sub)),
+            PhysicalMaterial {
+                albedo: Srgba::RED,
+                ..Default::default()
+            },
+        );
+
+        debug_sphere.set_transformation(Mat4::from_translation(*point) * Mat4::from_scale(0.05));
+
+        models.push(debug_sphere);
+    }
+
+    // scale applied to whole tube
+    // whole tube can be splitted in separate cylinders -> Vec<TriMesh>
+    let sin_tri_tube = tube_path(&sin_path, 16, 0.5);
+    let sin_tube = Gm::new(Mesh::new(&context, &sin_tri_tube), PhysicalMaterial::default());
+
+    models.push(sin_tube);
+
     let camera_position = vec3(0., 0., 2.);
     let target = vec3(0., 0.5, 0.);
     let up_v = vec3(0., 1., 0.);
@@ -92,7 +217,7 @@ fn main() {
         up_v,
         degrees(45.0),
         0.1,
-        10.0,
+        100.0,
     );
 
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
