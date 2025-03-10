@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 three-d = { version = "0.18.2", features=["egui-gui"] }
 three-d-asset = {version = "0.9", features = ["obj"] }
+rfd = "0.15.2"
