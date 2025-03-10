@@ -1,14 +1,35 @@
+use std::path::Path;
+
 use three_d::{
-    AmbientLight, Axes, Camera, ClearState, ColorMaterial, CpuMaterial, CpuMesh, CpuModel, Cull,
-    DirectionalLight, FrameOutput, Gm, Mat4, Matrix4, Mesh, Model, OrbitControl, PhysicalMaterial,
-    Srgba, Viewport, Window, WindowSettings, degrees, vec3,
+    AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
+    Cull, DirectionalLight, FrameOutput, Gm, Mat4, Matrix4, Mesh, Model, OrbitControl,
+    PhysicalMaterial, Srgba, Viewport, Window, WindowSettings, degrees, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
 const WINDOW_HEIGHT: u32 = 720;
 
+// sync model creation
+fn create_model(path: &Path, context: &Context) -> Gm<Mesh, PhysicalMaterial> {
+    let model_name = path.file_name().expect("No file name");
+
+    let mut load = three_d_asset::io::load(&[path]).expect(&format!("Unable to load {:?}", path));
+
+    let cpu_model: CpuModel = load
+        .deserialize(model_name)
+        .expect(&format!("Unable to deserialize {:?}", model_name));
+
+    let model = Model::<PhysicalMaterial>::new(&context, &cpu_model)
+        .unwrap()
+        .remove(0)
+        .into();
+
+    model
+}
+
 fn main() {
     let application_title = String::from("Example");
+    let current_dir = std::env::current_dir().unwrap();
 
     let window = Window::new(WindowSettings {
         title: application_title,
@@ -23,26 +44,12 @@ fn main() {
 
     let axes = Gm::new(Axes::new(&context, 0.01, 10.0), ColorMaterial::default());
 
-    let mut load_teapot = three_d_asset::io::load(&["meshes/suzanne.obj"]).unwrap();
-    let model: CpuModel = load_teapot.deserialize("suzanne.obj").unwrap();
-    let mut suzanne = Model::<PhysicalMaterial>::new(&context, &model).unwrap();
+    let mut suzanne = create_model(&Path::new("meshes/suzanne.obj"), &context);
+    suzanne.material.render_states.cull = Cull::Back;
+    suzanne
+        .set_transformation(Mat4::from_scale(0.2) * Matrix4::from_translation(vec3(0., 0.3, 0.)));
 
-    suzanne.iter_mut().for_each(|m| {
-        m.material.render_states.cull = Cull::Back;
-        m.set_transformation(Mat4::from_scale(0.2) * Matrix4::from_translation(vec3(0., 0.3, 0.)));
-    });
-
-    suzanne.iter_mut().for_each(|m| {
-        m.material = PhysicalMaterial::new_opaque(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba::new_opaque(170, 169, 173),
-                roughness: 0.7,
-                metallic: 0.8,
-                ..Default::default()
-            },
-        )
-    });
+    let mut models = Vec::new();
 
     let ambient = AmbientLight::new(&context, 0.4, Srgba::WHITE);
     let mut directional = DirectionalLight::new(
@@ -104,8 +111,24 @@ fn main() {
 
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     ui.heading("Debug Panel");
+
                     ui.add(Slider::new(&mut metalic, 0.0..=1.0).text("Model metalic"));
                     ui.add(Slider::new(&mut model_scale, 0.3..=0.1).text("Model scale"));
+
+                    if ui.button("Select file").clicked() {
+                        // block draw thread
+                        let response = rfd::FileDialog::new()
+                            .set_directory(&current_dir)
+                            .pick_file();
+
+                        match response {
+                            Some(buf) => {
+                                let new_model = create_model(buf.as_path(), &context);
+                                models.push(new_model);
+                            }
+                            None => {}
+                        }
+                    }
                 });
 
                 panel_width = gui_context.used_rect().width();
@@ -123,15 +146,10 @@ fn main() {
         camera.set_viewport(viewport);
         control.handle_events(&mut camera, &mut frame_input.events);
 
-        suzanne.iter_mut().for_each(|m| {
-            m.set_transformation(
-                Mat4::from_translation(vec3(0., 0.5, 0.)) * Mat4::from_scale(model_scale),
-            )
-        });
-
-        suzanne.iter_mut().for_each(|m| {
-            m.material.metallic = metalic;
-        });
+        suzanne.set_transformation(
+            Mat4::from_translation(vec3(0., 0.5, 0.)) * Mat4::from_scale(model_scale),
+        );
+        suzanne.material.metallic = metalic;
 
         directional.generate_shadow_map(1024, &suzanne);
 
@@ -140,7 +158,8 @@ fn main() {
             // Clear the color and depth of the screen render target
             .clear(ClearState::color_and_depth(0.8, 0.8, 0.7, 1.0, 1.0))
             // Render the triangle with the color material which uses the per vertex colors defined at construction
-            .render(&camera, suzanne.into_iter(), &[&ambient, &directional])
+            .render(&camera, &suzanne, &[&ambient, &directional])
+            .render(&camera, &models, &[&ambient])
             .render(
                 &camera,
                 plane.into_iter().chain(&axes),
