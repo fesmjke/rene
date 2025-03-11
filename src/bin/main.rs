@@ -13,6 +13,130 @@ const WINDOW_HEIGHT: u32 = 720;
 
 type TubePath = Vec<Vec3>;
 
+struct Plane {
+    pub normal: Vec3,
+    pub d: f32,
+}
+
+impl Plane {
+    pub fn new(point: Vec3, normal: Vec3) -> Self {
+        let d = -(normal.x * point.x + normal.y * point.y + normal.z * point.z);
+
+        Self { normal, d }
+    }
+}
+
+struct Line {
+    pub direction: Vec3,
+    pub point: Vec3,
+}
+
+impl Line {
+    pub fn new(direction: Vec3, point: Vec3) -> Self {
+        Self { direction, point }
+    }
+}
+
+fn plane_vector_intersect(line: Line, plane: Plane) -> Vec3 {
+    let dot1 = plane.normal.dot(line.direction);
+    let dot2 = plane.normal.dot(line.point);
+
+    println!("{:?}", dot1);
+
+    if dot1 == 0.0 {
+        return Vec3::new(0., 0., 0.);
+    }
+
+    let t = -(dot2 + plane.d) / dot1;
+
+    return line.point + (t * line.direction);
+}
+
+//  extruding a contour around path
+fn tube(path: &TubePath, angle_subdivisions: i32) -> (Vec<Vec3>, TriMesh) {
+    // for now
+
+    let mut positions = vec![];
+    let mut indices = vec![];
+
+    const CHUNK_SIZE: usize = 3;
+
+    for q in path.chunks(CHUNK_SIZE) {
+        let mut p1 = vec![];
+        let mut p2 = vec![];
+        let mut p3 = vec![];
+
+        let v1 = q[1] - q[0]; // direction
+        let v2 = q[2] - q[1]; // direction
+        let normal = v1 + v2; // plane normal p2 to p3
+
+        println!("{:?}", v1);
+
+        let v1_norm = v1.normalize();
+
+        let arbitrary = if v1_norm.x.abs() < 0.9 { Vec3::unit_x() } else { Vec3::unit_y() };
+
+        let u = v1_norm.cross(arbitrary).normalize();
+        let v = v1_norm.cross(u).normalize();
+
+        for j in 0..angle_subdivisions {
+            let angle = 2.0 * std::f32::consts::PI * j as f32 / angle_subdivisions as f32;
+
+            let point = q[0] + (angle.cos() * u + angle.sin() * v);
+            p1.push(point); // p1
+        }
+
+        println!("{:?}", p1);
+
+        for p1_point in p1.iter() {
+            let plane = Plane::new(q[1], normal);
+            let line = Line::new(v1, *p1_point);
+
+            let intersection = plane_vector_intersect(line, plane);
+
+            p2.push(intersection);
+        }
+
+        for p2_point in p2.iter() {
+            let plane = Plane::new(q[2], normal);
+            let line = Line::new(v2, *p2_point);
+
+            let intersection = plane_vector_intersect(line, plane);
+
+            p3.push(intersection);
+        }
+
+        positions.extend(p1);
+        positions.extend(p2);
+        positions.extend(p3);
+    }
+
+    for i in 0..(path.len() - 1) as i32 {
+        for j in 0..angle_subdivisions {
+            indices.push((i * angle_subdivisions + j) as u16);
+            indices.push((i * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+
+            indices.push((i * angle_subdivisions + j) as u16);
+            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
+            indices.push(((i + 1) * angle_subdivisions + j) as u16);
+        }
+    }
+
+    println!("{:?}", positions);
+    println!("{:?}", indices);
+
+    let mut mesh = TriMesh {
+        positions: Positions::F32(positions.clone()),
+        indices: Indices::U16(indices),
+        ..Default::default()
+    };
+
+    mesh.compute_normals();
+
+    (positions, mesh)
+}
+
 fn tube_path(path: &TubePath, angle_subdivisions: i32, scale: f32) -> TriMesh {
     let mut positions: Vec<Vec3> = Vec::new();
     let mut indices = Vec::new();
@@ -177,7 +301,7 @@ fn main() {
     let sphere_sub = 16;
 
     let start = Vec3::new(0.0, 0.0, 0.0); // Start position
-    let direction = Vec3::new(10.0, 4.0, 3.0); // Along X-axis
+    let direction = Vec3::new(10.0, 0.0, 0.0); // Along X-axis
     let amplitude = 1.0;
     let period = 2.0 * f32::consts::PI / 1.0; // One full wave every 5 units
     let length = 24.0; // Total length of the sine wave
@@ -185,7 +309,23 @@ fn main() {
 
     let sin_path = generate_sine_curve(start, direction, amplitude, period, length, points_count);
 
-    for point in sin_path.iter() {
+    // scale applied to whole tube
+    // whole tube can be splitted in separate cylinders -> Vec<TriMesh>
+    let sin_tri_tube = tube_path(&sin_path, 16, 1.);
+    let sin_tube = Gm::new(
+        Mesh::new(&context, &sin_tri_tube),
+        PhysicalMaterial::default(),
+    );
+
+    // models.push(sin_tube);
+
+    let tube_v2_path = vec![vec3(0., 0., 0.), vec3(0., 2., 0.), vec3(2., 2., 0.)];
+
+    let tube_v2 = tube_path_v2(&tube_v2_path, 4);
+
+    let tube_v2_model = Gm::new(Mesh::new(&context, &tube_v2.1), PhysicalMaterial::default());
+
+    for point in tube_v2.0.iter() {
         let mut debug_sphere = Gm::new(
             Mesh::new(&context, &CpuMesh::sphere(sphere_sub)),
             PhysicalMaterial {
@@ -199,12 +339,22 @@ fn main() {
         models.push(debug_sphere);
     }
 
-    // scale applied to whole tube
-    // whole tube can be splitted in separate cylinders -> Vec<TriMesh>
-    let sin_tri_tube = tube_path(&sin_path, 16, 0.5);
-    let sin_tube = Gm::new(Mesh::new(&context, &sin_tri_tube), PhysicalMaterial::default());
+    models.push(tube_v2_model);
 
-    models.push(sin_tube);
+    // let arc_tube = tube_path(
+    //     &vec![
+    //         vec3(-1., 0., 0.),
+    //         vec3(0., 2., 0.),
+    //         vec3(1., 2., 0.),
+    //         vec3(2., 2., 0.),
+    //         vec3(2., 0., 0.),
+    //     ],
+    //     16,
+    //     1.0,
+    // );
+    // let arc_tube = Gm::new(Mesh::new(&context, &arc_tube), PhysicalMaterial::default());
+
+    // models.push(arc_tube);
 
     let camera_position = vec3(0., 0., 2.);
     let target = vec3(0., 0.5, 0.);
