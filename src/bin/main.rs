@@ -1,10 +1,13 @@
-use rene::tube;
+use rene::{
+    tube,
+    wireframe::{edge_transformations, vertex_transformations},
+};
 use std::path::Path;
 
 use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
-    DirectionalLight, FrameOutput, Gm, Mat4, Mesh, Model, OrbitControl, PhysicalMaterial, Srgba,
-    Viewport, Window, WindowSettings, degrees, vec3,
+    Cull, DirectionalLight, FrameOutput, Gm, InstancedMesh, Mat4, Mesh, Model, OrbitControl,
+    PhysicalMaterial, Srgba, Viewport, Window, WindowSettings, degrees, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -79,24 +82,52 @@ fn main() {
     let sphere_sub = 16;
 
     let path = vec![vec3(0., 0., 0.), vec3(0., 2., 0.), vec3(2., 2., 0.)];
-    let (tube_vertex_positions, cpu_tube) = tube(&path, 4);
-    let gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), PhysicalMaterial::default());
+    let cpu_tube = tube(&path, 16);
 
-    for point in tube_vertex_positions.iter() {
-        let mut debug_sphere = Gm::new(
-            Mesh::new(&context, &CpuMesh::sphere(sphere_sub)),
-            PhysicalMaterial {
-                albedo: Srgba::RED,
-                ..Default::default()
+    let mut transparent = PhysicalMaterial::new_transparent(
+        &context,
+        &CpuMaterial {
+            albedo: Srgba {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
             },
-        );
+            ..Default::default()
+        },
+    );
 
-        debug_sphere.set_transformation(Mat4::from_translation(*point) * Mat4::from_scale(0.05));
+    transparent.render_states.cull = Cull::FrontAndBack;
 
-        models.push(debug_sphere);
-    }
+    let gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), transparent);
 
-    models.push(gm_tube);
+    // wireframe
+    let wireframe_material = PhysicalMaterial::new_opaque(
+        &context,
+        &CpuMaterial {
+            albedo: Srgba::new_opaque(220, 50, 50),
+            roughness: 0.7,
+            metallic: 0.8,
+            ..Default::default()
+        },
+    );
+
+    let mut cylinder = CpuMesh::cylinder(12);
+    cylinder
+        .transform(Mat4::from_nonuniform_scale(1.0, 0.007, 0.007))
+        .unwrap();
+
+    let edges = Gm::new(
+        InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
+        wireframe_material.clone(),
+    );
+
+    let mut sphere = CpuMesh::sphere(8);
+    sphere.transform(Mat4::from_scale(0.015)).unwrap();
+    let vertices = Gm::new(
+        InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
+        wireframe_material,
+    );
 
     // camera part
     let camera_position = vec3(0., 0., 2.);
@@ -163,9 +194,13 @@ fn main() {
         frame_input
             .screen()
             // Clear the color and depth of the screen render target
-            .clear(ClearState::color_and_depth(0.8, 0.8, 0.7, 1.0, 1.0))
+            .clear(ClearState::color_and_depth(1., 1., 1., 1.0, 1.0))
             // Render the triangle with the color material which uses the per vertex colors defined at construction
-            .render(&camera, &models, &[&ambient])
+            .render(
+                &camera,
+                gm_tube.into_iter().chain(&vertices).chain(&edges),
+                &[&ambient],
+            )
             .render(
                 &camera,
                 plane.into_iter().chain(&axes),
