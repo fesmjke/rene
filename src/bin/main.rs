@@ -1,13 +1,15 @@
 use rene::{
-    tube,
+    curves::generate_sine_curve,
+    tube::{tube_s, Tube},
     wireframe::{edge_transformations, vertex_transformations},
 };
 use std::path::Path;
 
 use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
-    Cull, DirectionalLight, FrameOutput, Gm, InstancedMesh, Mat4, Mesh, Model, OrbitControl,
-    PhysicalMaterial, Srgba, Viewport, Window, WindowSettings, degrees, vec3,
+    Cull, DirectionalLight, FrameOutput, Gm, Indices, InstancedMesh, Mat4, Mesh, Model,
+    OrbitControl, PhysicalMaterial, Positions, Srgba, Viewport, Window, WindowSettings, degrees,
+    vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -79,10 +81,39 @@ fn main() {
         ),
     );
 
-    let sphere_sub = 16;
+    let start = vec3(0.0, 0.0, 0.0);
+    let direction = vec3(10.0, 0.0, 0.0);
+    let sin_path = generate_sine_curve(start, direction, 1.0, 1.0, 10.0, 64);
 
-    let path = vec![vec3(0., 0., 0.), vec3(0., 2., 0.), vec3(2., 2., 0.)];
-    let cpu_tube = tube(&path, 16);
+    let mut tube = tube_s(&sin_path, 0.2, 16);
+
+    let mut cpu_tube: CpuMesh = CpuMesh {
+        positions: Positions::F32(tube.vertices),
+        indices: Indices::U32(tube.indices),
+        ..Default::default()
+    };
+
+    let y_offset = vec3(0., 2., 0.);
+
+    cpu_tube.compute_normals();
+    cpu_tube
+        .transform(Mat4::from_translation(y_offset))
+        .unwrap();
+
+    let fm_tube = Tube::new(&sin_path, 64, 1., 16);
+
+    let mut fm_cpu_tube: CpuMesh = CpuMesh {
+        positions: Positions::F32(fm_tube.vertices),
+        indices: Indices::U32(fm_tube.indices),
+        ..Default::default()
+    };
+
+    fm_cpu_tube.compute_normals();
+    fm_cpu_tube
+        .transform(Mat4::from_translation(y_offset))
+        .unwrap();
+
+    let default_material = PhysicalMaterial::new_opaque(&context, &CpuMaterial::default());
 
     let mut transparent = PhysicalMaterial::new_transparent(
         &context,
@@ -99,7 +130,7 @@ fn main() {
 
     transparent.render_states.cull = Cull::FrontAndBack;
 
-    let gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), transparent);
+    let gm_tube = Gm::new(Mesh::new(&context, &fm_cpu_tube), default_material);
 
     // wireframe
     let wireframe_material = PhysicalMaterial::new_opaque(
@@ -118,14 +149,14 @@ fn main() {
         .unwrap();
 
     let edges = Gm::new(
-        InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
+        InstancedMesh::new(&context, &edge_transformations(&fm_cpu_tube), &cylinder),
         wireframe_material.clone(),
     );
 
     let mut sphere = CpuMesh::sphere(8);
     sphere.transform(Mat4::from_scale(0.015)).unwrap();
     let vertices = Gm::new(
-        InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
+        InstancedMesh::new(&context, &vertex_transformations(&fm_cpu_tube), &sphere),
         wireframe_material,
     );
 
@@ -199,8 +230,10 @@ fn main() {
             .render(
                 &camera,
                 gm_tube.into_iter().chain(&vertices).chain(&edges),
+                // .chain(&edges),
                 &[&ambient],
             )
+            // .render(&camera, &vectors, &[&ambient])
             .render(
                 &camera,
                 plane.into_iter().chain(&axes),
