@@ -1,131 +1,189 @@
-use three_d::{CpuMesh, Indices, InnerSpace, Positions, Vec3};
+use three_d::{InnerSpace, Vec3, Vector3};
 
-type Path = Vec<Vec3>;
+use crate::curves::{Frame, compute_frenet_frames};
 
-struct Plane {
-    pub normal: Vec3,
-    pub d: f32,
+pub struct Tube {
+    pub vertices: Vec<Vec3>,
+    pub indices: Vec<u32>,
+    pub normals: Vec<Vec3>,
+    pub binormals: Vec<Vec3>,
+    pub tangents: Vec<Vec3>,
 }
 
-impl Plane {
-    pub fn new(point: Vec3, normal: Vec3) -> Self {
-        let d = -(normal.x * point.x + normal.y * point.y + normal.z * point.z);
+impl Tube {
+    pub fn new(
+        path: &[Vec3],
+        tubular_segments: usize,
+        radius: f32,
+        radial_segments: usize,
+    ) -> Self {
+        let frame = compute_frenet_frames(tubular_segments);
 
-        Self { normal, d }
+        let mut vertices = vec![];
+        let mut normals = vec![];
+        let mut indices = vec![];
+
+        // buffer
+
+        Self::generate_buffer(
+            path,
+            &mut indices,
+            &mut vertices,
+            &mut normals,
+            tubular_segments,
+            radius,
+            radial_segments,
+            &frame,
+        );
+
+        Self {
+            vertices,
+            indices,
+            normals,
+            binormals: frame.binormals,
+            tangents: frame.tangents,
+        }
+    }
+
+    fn generate_buffer(
+        path: &[Vec3],
+        indices: &mut Vec<u32>,
+        vertices: &mut Vec<Vec3>,
+        normals: &mut Vec<Vec3>,
+        tubular_segments: usize,
+        radius: f32,
+        radial_segments: usize,
+        frames: &Frame,
+    ) {
+        // tubular segments -> len of path
+        for i in 0..tubular_segments {
+            Self::generate_segment(
+                vertices,
+                normals,
+                &path[i],
+                radial_segments,
+                radius,
+                &frames.normals[i],
+                &frames.binormals[i],
+            );
+        }
+
+        Self::generate_indices(indices, tubular_segments, radial_segments);
+    }
+
+    fn generate_segment(
+        vertices: &mut Vec<Vec3>,
+        normals: &mut Vec<Vec3>,
+        point: &Vector3<f32>,
+        radial_segments: usize,
+        radius: f32,
+        frame_N: &Vec3,
+        frame_B: &Vec3,
+    ) {
+        // // generate normals and vertices for the current segment
+
+        for j in 0..radial_segments {
+            let v = j as f32 / radial_segments as f32 * std::f32::consts::PI * 2.;
+
+            let sin = v.sin();
+            let cos = v.cos();
+
+            let mut normal = Vec3::new(0., 0., 0.);
+
+            normal.x = cos * frame_N.x + sin * frame_B.x;
+            normal.y = cos * frame_N.y + sin * frame_B.y;
+            normal.z = cos * frame_N.z + sin * frame_B.z;
+            normal.normalize();
+            normals.push(normal);
+
+            // vertex
+
+            let mut vertex = Vec3::new(0., 0., 0.);
+
+            vertex.x = point.x + radius * normal.x;
+            vertex.y = point.y + radius * normal.y;
+            vertex.z = point.z + radius * normal.z;
+
+            vertices.push(vertex);
+        }
+    }
+
+    fn generate_indices(indices: &mut Vec<u32>, tubular_segments: usize, radial_segments: usize) {
+        for i in 0..tubular_segments - 1 {
+            for j in 0..radial_segments {
+                let next_j = (j + 1) % radial_segments;
+                let current = (i * radial_segments + j) as u32;
+                let next = ((i + 1) * radial_segments + j) as u32;
+                let current_next = (i * radial_segments + next_j) as u32;
+                let next_next = ((i + 1) * radial_segments + next_j) as u32;
+
+                indices.push(current);
+                indices.push(next);
+                indices.push(current_next);
+
+                indices.push(current_next);
+                indices.push(next);
+                indices.push(next_next);
+            }
+        }
     }
 }
 
-struct Line {
-    pub direction: Vec3,
-    pub point: Vec3,
-}
+pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> Tube {
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
 
-impl Line {
-    pub fn new(direction: Vec3, point: Vec3) -> Self {
-        Self { direction, point }
-    }
-}
+    let mut normals = vec![];
+    let mut binormals = vec![];
+    let mut tangents = vec![];
 
-fn plane_vector_intersect(line: Line, plane: Plane) -> Vec3 {
-    let dot1 = plane.normal.dot(line.direction);
-    let dot2 = plane.normal.dot(line.point);
-
-    println!("{:?}", dot1);
-
-    if dot1 == 0.0 {
-        return Vec3::new(0., 0., 0.);
-    }
-
-    let t = -(dot2 + plane.d) / dot1;
-
-    return line.point + (t * line.direction);
-}
-
-//  extruding a contour around path
-pub fn tube(path: &Path, angle_subdivisions: i32) -> (Vec<Vec3>, CpuMesh) {
-    // for now
-
-    let mut positions = vec![];
-    let mut indices = vec![];
-
-    const CHUNK_SIZE: usize = 3;
-
-    for q in path.chunks(CHUNK_SIZE) {
-        let mut p1 = vec![];
-        let mut p2 = vec![];
-        let mut p3 = vec![];
-
-        let v1 = q[1] - q[0]; // direction
-        let v2 = q[2] - q[1]; // direction
-        let normal = v1 + v2; // plane normal p2 to p3
-
-        println!("{:?}", v1);
-
-        let v1_norm = v1.normalize();
-
-        let arbitrary = if v1_norm.x.abs() < 0.9 {
-            Vec3::unit_x()
+    for i in 0..curve.len() {
+        let p = curve[i];
+        let tangent = if i < curve.len() - 1 {
+            (curve[i + 1] - p).normalize()
         } else {
-            Vec3::unit_y()
+            (p - curve[i - 1]).normalize()
         };
 
-        let u = v1_norm.cross(arbitrary).normalize();
-        let v = v1_norm.cross(u).normalize();
+        let normal = if tangent.z.abs() < tangent.x.abs() {
+            Vector3::new(-tangent.y, tangent.x, 0.0).normalize()
+        } else {
+            Vector3::new(0.0, -tangent.z, tangent.y).normalize()
+        };
 
-        for j in 0..angle_subdivisions {
-            let angle = 2.0 * std::f32::consts::PI * j as f32 / angle_subdivisions as f32;
+        let binormal = tangent.cross(normal).normalize();
 
-            let point = q[0] + (angle.cos() * u + angle.sin() * v);
-            p1.push(point); // p1
-        }
-
-        println!("{:?}", p1);
-
-        for p1_point in p1.iter() {
-            let plane = Plane::new(q[1], normal);
-            let line = Line::new(v1, *p1_point);
-
-            let intersection = plane_vector_intersect(line, plane);
-
-            p2.push(intersection);
-        }
-
-        for p2_point in p2.iter() {
-            let plane = Plane::new(q[2], normal);
-            let line = Line::new(v2, *p2_point);
-
-            let intersection = plane_vector_intersect(line, plane);
-
-            p3.push(intersection);
-        }
-
-        positions.extend(p1);
-        positions.extend(p2);
-        positions.extend(p3);
-    }
-
-    for i in 0..(path.len() - 1) as i32 {
-        for j in 0..angle_subdivisions {
-            indices.push((i * angle_subdivisions + j) as u16);
-            indices.push((i * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
-            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
-
-            indices.push((i * angle_subdivisions + j) as u16);
-            indices.push(((i + 1) * angle_subdivisions + (j + 1) % angle_subdivisions) as u16);
-            indices.push(((i + 1) * angle_subdivisions + j) as u16);
+        for j in 0..segments {
+            let angle = (j as f32) / (segments as f32) * std::f32::consts::TAU;
+            let offset = normal * angle.cos() + binormal * angle.sin();
+            vertices.push(p + offset * radius);
         }
     }
 
-    println!("{:?}", positions);
-    println!("{:?}", indices);
+    let rings = curve.len();
+    for i in 0..rings - 1 {
+        for j in 0..segments {
+            let next_j = (j + 1) % segments;
+            let current = (i * segments + j) as u32;
+            let next = ((i + 1) * segments + j) as u32;
+            let current_next = (i * segments + next_j) as u32;
+            let next_next = ((i + 1) * segments + next_j) as u32;
 
-    let mut mesh: CpuMesh = CpuMesh {
-        positions: Positions::F32(positions.clone()),
-        indices: Indices::U16(indices),
-        ..Default::default()
-    };
+            indices.push(current);
+            indices.push(next);
+            indices.push(current_next);
 
-    mesh.compute_normals();
+            indices.push(current_next);
+            indices.push(next);
+            indices.push(next_next);
+        }
+    }
 
-    (positions, mesh)
+    Tube {
+        vertices,
+        indices,
+        normals,
+        binormals,
+        tangents,
+    }
 }
