@@ -105,11 +105,12 @@ fn main() {
     let mut arrows = vec![];
 
     for tangent in tube.tangents.iter() {
-        let mut arrow = CpuMesh::arrow(0.6, 0.1, 16);
+        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
 
         let rotation = Mat4::look_at_lh(
-            Point3::from_vec(tangent.point),
-            Point3::from_vec(tangent.direction),
+            // Point3::from_vec(tangent.point + y_offset),
+            Point3::origin(),
+            Point3::from_vec(tangent.direction.normalize()),
             Vec3::unit_y(),
         );
 
@@ -124,11 +125,25 @@ fn main() {
         //     Mat4::from_axis_angle(axis, angle)
         // };
 
-        arrow.transform(rotation).unwrap();
+        // + y_offset
 
-        arrow
-            .transform(Mat4::from_translation(tangent.point + y_offset) * Mat4::from_scale(0.05))
-            .unwrap();
+        // * rotation
+
+        // Mat4::from_translation(tangent.point + y_offset)
+        let brr = Mat4::from_translation(tangent.point + y_offset)
+            * rotation
+            * Mat4::from_nonuniform_scale(0.6, 0.01, 0.01);
+
+        // они накладываются в обратном порядке(вроде бы)
+        // 1. удлинняем
+        // 2. крутим
+        // 3. позиционируем
+
+        arrow.transform(brr).unwrap();
+
+        // arrow
+        //     .transform(Mat4::from_translation(tangent.point + y_offset) * Mat4::from_scale(0.05))
+        //     .unwrap();
 
         let arrow = Gm::new(
             Mesh::new(&context, &arrow),
