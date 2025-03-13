@@ -109,13 +109,13 @@ impl Tube {
     }
 
     fn generate_indices(indices: &mut Vec<u32>, tubular_segments: usize, radial_segments: usize) {
-        for i in 0..tubular_segments - 1 {
-            for j in 0..radial_segments {
-                let next_j = (j + 1) % radial_segments;
-                let current = (i * radial_segments + j) as u32;
-                let next = ((i + 1) * radial_segments + j) as u32;
-                let current_next = (i * radial_segments + next_j) as u32;
-                let next_next = ((i + 1) * radial_segments + next_j) as u32;
+        for i in 0..radial_segments - 1 {
+            for j in 0..tubular_segments {
+                let next_j = (j + 1) % tubular_segments;
+                let current = (i * tubular_segments + j) as u32;
+                let next = ((i + 1) * tubular_segments + j) as u32;
+                let current_next = (i * tubular_segments + next_j) as u32;
+                let next_next = ((i + 1) * tubular_segments + next_j) as u32;
 
                 indices.push(current);
                 indices.push(next);
@@ -126,10 +126,24 @@ impl Tube {
                 indices.push(next_next);
             }
         }
+        println!("{:?}", indices);
     }
 }
 
-pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> Tube {
+pub struct VPair {
+    pub point: Vec3,
+    pub direction: Vec3,
+}
+
+pub struct TubeS {
+    pub vertices: Vec<Vec3>,
+    pub indices: Vec<u32>,
+    pub normals: Vec<VPair>,
+    pub binormals: Vec<VPair>,
+    pub tangents: Vec<VPair>,
+}
+
+pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> TubeS {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
 
@@ -145,13 +159,28 @@ pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> Tube {
             (p - curve[i - 1]).normalize()
         };
 
+        tangents.push(VPair {
+            point: p,
+            direction: tangent,
+        });
+
         let normal = if tangent.z.abs() < tangent.x.abs() {
             Vector3::new(-tangent.y, tangent.x, 0.0).normalize()
         } else {
             Vector3::new(0.0, -tangent.z, tangent.y).normalize()
         };
 
+        normals.push(VPair {
+            point: p,
+            direction: normal,
+        });
+
         let binormal = tangent.cross(normal).normalize();
+
+        binormals.push(VPair {
+            point: p,
+            direction: binormal,
+        });
 
         for j in 0..segments {
             let angle = (j as f32) / (segments as f32) * std::f32::consts::TAU;
@@ -179,7 +208,7 @@ pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> Tube {
         }
     }
 
-    Tube {
+    TubeS {
         vertices,
         indices,
         normals,

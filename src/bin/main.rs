@@ -1,15 +1,16 @@
 use rene::{
     curves::generate_sine_curve,
-    tube::{tube_s, Tube},
+    tube::tube_s,
     wireframe::{edge_transformations, vertex_transformations},
 };
 use std::path::Path;
 
 use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
-    Cull, DirectionalLight, FrameOutput, Gm, Indices, InstancedMesh, Mat4, Mesh, Model,
-    OrbitControl, PhysicalMaterial, Positions, Srgba, Viewport, Window, WindowSettings, degrees,
-    vec3,
+    Cull, DirectionalLight, EuclideanSpace, FrameOutput, Gm, Indices, InnerSpace, InstancedMesh,
+    Mat4, Mesh, Model, One, OrbitControl, PhysicalMaterial, Point3, Positions, Quaternion,
+    Rotation3, SquareMatrix, Srgba, Vec3, Vector4, Viewport, Window, WindowSettings, degrees,
+    radians, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -83,7 +84,7 @@ fn main() {
 
     let start = vec3(0.0, 0.0, 0.0);
     let direction = vec3(10.0, 0.0, 0.0);
-    let sin_path = generate_sine_curve(start, direction, 1.0, 1.0, 10.0, 64);
+    let sin_path = generate_sine_curve(start, direction, 1.0, 1.0, 10.0, 32);
 
     let mut tube = tube_s(&sin_path, 0.2, 16);
 
@@ -100,18 +101,45 @@ fn main() {
         .transform(Mat4::from_translation(y_offset))
         .unwrap();
 
-    let fm_tube = Tube::new(&sin_path, 64, 1., 16);
+    // let mut vectors = vec![];
+    let mut arrows = vec![];
 
-    let mut fm_cpu_tube: CpuMesh = CpuMesh {
-        positions: Positions::F32(fm_tube.vertices),
-        indices: Indices::U32(fm_tube.indices),
-        ..Default::default()
-    };
+    for tangent in tube.tangents.iter() {
+        let mut arrow = CpuMesh::arrow(0.6, 0.1, 16);
 
-    fm_cpu_tube.compute_normals();
-    fm_cpu_tube
-        .transform(Mat4::from_translation(y_offset))
-        .unwrap();
+        let rotation = Mat4::look_at_lh(
+            Point3::from_vec(tangent.point),
+            Point3::from_vec(tangent.direction),
+            Vec3::unit_y(),
+        );
+
+        // let init_direction = Vec3::unit_x();
+        // let axis = init_direction.cross(tangent.direction);
+        // let d = init_direction.dot(tangent.direction);
+        // let angle = radians(d);
+
+        // let rotation = if d.acos().abs() < 1e-6 {
+        //     Mat4::identity()
+        // } else {
+        //     Mat4::from_axis_angle(axis, angle)
+        // };
+
+        arrow.transform(rotation).unwrap();
+
+        arrow
+            .transform(Mat4::from_translation(tangent.point + y_offset) * Mat4::from_scale(0.05))
+            .unwrap();
+
+        let arrow = Gm::new(
+            Mesh::new(&context, &arrow),
+            PhysicalMaterial {
+                albedo: Srgba::BLUE,
+                ..Default::default()
+            },
+        );
+
+        arrows.push(arrow);
+    }
 
     let default_material = PhysicalMaterial::new_opaque(&context, &CpuMaterial::default());
 
@@ -130,7 +158,7 @@ fn main() {
 
     transparent.render_states.cull = Cull::FrontAndBack;
 
-    let gm_tube = Gm::new(Mesh::new(&context, &fm_cpu_tube), default_material);
+    let gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), transparent);
 
     // wireframe
     let wireframe_material = PhysicalMaterial::new_opaque(
@@ -149,20 +177,20 @@ fn main() {
         .unwrap();
 
     let edges = Gm::new(
-        InstancedMesh::new(&context, &edge_transformations(&fm_cpu_tube), &cylinder),
+        InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
         wireframe_material.clone(),
     );
 
     let mut sphere = CpuMesh::sphere(8);
     sphere.transform(Mat4::from_scale(0.015)).unwrap();
     let vertices = Gm::new(
-        InstancedMesh::new(&context, &vertex_transformations(&fm_cpu_tube), &sphere),
+        InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
         wireframe_material,
     );
 
     // camera part
     let camera_position = vec3(0., 0., 2.);
-    let target = vec3(0., 0.5, 0.);
+    let target = vec3(0., 2.0, 0.);
     let up_v = vec3(0., 1., 0.);
 
     let mut camera = Camera::new_perspective(
@@ -229,10 +257,11 @@ fn main() {
             // Render the triangle with the color material which uses the per vertex colors defined at construction
             .render(
                 &camera,
-                gm_tube.into_iter().chain(&vertices).chain(&edges),
+                gm_tube.into_iter().chain(&vertices),
                 // .chain(&edges),
                 &[&ambient],
             )
+            .render(&camera, &arrows, &[&ambient, &directional])
             // .render(&camera, &vectors, &[&ambient])
             .render(
                 &camera,
