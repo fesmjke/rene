@@ -46,6 +46,12 @@ fn main() {
     })
     .unwrap();
 
+    // debug menu
+    let mut show_axes = false;
+    let mut sphere_position = vec3(0.5, 0.3, 0.35);
+    let arrow_direction = Vec3::unit_x();
+    let arrow_position = vec3(2., 2., 0.);
+
     let context = window.gl();
     let mut gui = three_d::GUI::new(&context);
 
@@ -62,8 +68,20 @@ fn main() {
     );
 
     // test arrow
+    let direction_vector = vec3(sphere_position.x, sphere_position.y, sphere_position.z);
+
+    println!("{:?}", direction_vector.normalize());
+
+    let rotation = Mat4::look_at_lh(
+        Point3::from_vec(arrow_position),
+        Point3::from_vec(direction_vector.normalize()),
+        Vec3::unit_y(),
+    );
+
+    println!("{:?}", rotation);
+
     let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-    let brr = Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
+    let brr = Mat4::from_translation(arrow_position) * rotation * Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
     // let brr = Mat4::from_scale(0.5);
     arrow.transform(brr).unwrap();
 
@@ -97,11 +115,6 @@ fn main() {
     );
 
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
-
-    // debug menu
-    let mut show_axes = false;
-    let mut sphere_position = vec3(0.5, 0.3, 0.35);
-    let arrow_direction = Vec3::unit_x();
 
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
@@ -159,34 +172,30 @@ fn main() {
         control.handle_events(&mut camera, &mut frame_input.events);
         sphere.set_transformation(Mat4::from_translation(sphere_position));
 
-        // rotate arrow 
+        // rotate arrow
         // assume that arrow at the origin (0., 0., 0.)
-        let initial_direction = arrow_direction; // (1., 0., 0.);
-        let direction_vector = vec3(
-            sphere_position.x - 0.,
-            sphere_position.y - 0.,
-            sphere_position.z - 0.,
-        );
-        let norm_direction_vector = direction_vector.normalize();
+        // let initial_direction = arrow_direction; // (1., 0., 0.);
+        // let direction_vector= sphere_position - arrow_position;
+        // let norm_direction_vector = direction_vector.normalize();
 
-        let rotation_axis = Vec3::cross( initial_direction, norm_direction_vector);
+        // let rotation_axis = Vec3::cross( initial_direction, norm_direction_vector);
 
-        let norm_rotation_axis = rotation_axis.normalize();
+        // let norm_rotation_axis = rotation_axis.normalize();
 
-        let dot = Vec3::dot(initial_direction, norm_direction_vector);
+        // let dot = Vec3::dot(initial_direction, norm_direction_vector);
 
-        let rotation_angle = dot.acos();
+        // let rotation_angle = dot.acos();
 
-        let degree = rotation_angle * 180.0 / std::f32::consts::PI;
+        // let degree = rotation_angle * 180.0 / std::f32::consts::PI;
 
-        let rotation = if norm_rotation_axis.x.is_nan() || norm_rotation_axis.y.is_nan() || norm_rotation_axis.y.is_nan() {
-            // why this method ignores me when 3.1415927 180.0° Vector3 [-1.0, 0.0, 0.0] and not flipping x?
-            Mat4::from_axis_angle(norm_direction_vector, degrees(degree))
-        } else {
-            Mat4::from_axis_angle(norm_rotation_axis, degrees(degree))
-        };
+        // let rotation = if norm_rotation_axis.x.is_nan() || norm_rotation_axis.y.is_nan() || norm_rotation_axis.y.is_nan() {
+        //     // why this method ignores me when 3.1415927 180.0° Vector3 [-1.0, 0.0, 0.0] and not flipping x?
+        //     Mat4::from_axis_angle(norm_direction_vector, degrees(degree))
+        // } else {
+        //     Mat4::from_axis_angle(norm_rotation_axis, degrees(degree))
+        // };
 
-        arrow.set_transformation(rotation);
+        // arrow.set_transformation(rotation);
 
         frame_input
             .screen()
