@@ -9,8 +9,8 @@ use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
     Cull, DirectionalLight, EuclideanSpace, FrameOutput, Gm, Indices, InnerSpace, InstancedMesh,
     Mat4, Mesh, Model, Object, One, OrbitControl, PhysicalMaterial, Point3, Positions, Quaternion,
-    Rotation, Rotation3, SquareMatrix, Srgba, Vec3, Vector4, Viewport, Window, WindowSettings,
-    degrees, radians, vec3,
+    Rotation, Rotation3, SquareMatrix, Srgba, Transform, Vec3, Vector3, Vector4, Viewport, Window,
+    WindowSettings, Zero, degrees, radians, rotation_matrix_from_dir_to_dir, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -72,18 +72,20 @@ fn main() {
 
     println!("{:?}", direction_vector.normalize());
 
-    let rotation = Mat4::look_at_lh(
-        Point3::from_vec(arrow_position),
-        Point3::from_vec(direction_vector.normalize()),
-        Vec3::unit_y(),
-    );
+    // let rotation = Mat4::look_at_lh(
+    //     Point3::from_vec(arrow_position),
+    //     Point3::from_vec(direction_vector.normalize()),
+    //     Vec3::unit_y(),
+    // );
 
-    println!("{:?}", rotation);
+    // println!("{:?}", rotation);
 
     let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-    let brr = Mat4::from_translation(arrow_position) * rotation * Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
-    // let brr = Mat4::from_scale(0.5);
-    arrow.transform(brr).unwrap();
+    // let brr = Mat4::from_translation(arrow_position)
+    //     * rotation
+    //     * Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
+    // // let brr = Mat4::from_scale(0.5);
+    // arrow.transform(brr).unwrap();
 
     let mut arrow = Gm::new(
         Mesh::new(&context, &arrow),
@@ -195,7 +197,12 @@ fn main() {
         //     Mat4::from_axis_angle(norm_rotation_axis, degrees(degree))
         // };
 
-        // arrow.set_transformation(rotation);
+        let arrow_origin = Point3::new(1., 2., 3.);
+        let dir = Point3::from_vec(sphere_position) - arrow_origin;
+
+        let brr = arrow_to_dir_pos(arrow_origin, dir);
+
+        arrow.set_transformation(brr);
 
         frame_input
             .screen()
@@ -213,4 +220,20 @@ fn main() {
 
         FrameOutput::default()
     });
+}
+
+pub fn arrow_to_dir_pos(pos: Point3<f32>, dir: Vector3<f32>) -> three_d::Matrix4<f32> {
+    // for sure
+    let dir = dir.normalize();
+
+    let rotation = rotation_matrix_from_dir_to_dir(
+        // потому что стрелка направлена вдоль x
+        Point3::new(1.0, 0., 0.).to_vec(),
+        dir.normalize(),
+    );
+
+    let brr = Mat4::from_translation(pos.to_vec())
+        * rotation
+        * Mat4::from_nonuniform_scale(0.6, 0.01, 0.01);
+    brr
 }
