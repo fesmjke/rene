@@ -8,9 +8,9 @@ use std::path::Path;
 use three_d::{
     AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
     Cull, DirectionalLight, EuclideanSpace, FrameOutput, Gm, Indices, InnerSpace, InstancedMesh,
-    Mat4, Mesh, Model, One, OrbitControl, PhysicalMaterial, Point3, Positions, Quaternion,
-    Rotation3, SquareMatrix, Srgba, Vec3, Vector4, Viewport, Window, WindowSettings, degrees,
-    radians, vec3,
+    Mat4, Mesh, Model, Object, One, OrbitControl, PhysicalMaterial, Point3, Positions, Quaternion,
+    Rotation, Rotation3, SquareMatrix, Srgba, Vec3, Vector4, Viewport, Window, WindowSettings,
+    degrees, radians, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -61,151 +61,29 @@ fn main() {
         vec3(0.0, -1.0, -1.0),
     );
 
-    let mut cpu_plane = CpuMesh::square();
+    // test arrow
+    let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+    let brr = Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
+    // let brr = Mat4::from_scale(0.5);
+    arrow.transform(brr).unwrap();
 
-    cpu_plane
-        .transform(
-            Mat4::from_translation(vec3(0.0, 0.0, 0.0))
-                * Mat4::from_scale(10.0)
-                * Mat4::from_angle_x(degrees(-90.0)),
-        )
-        .unwrap();
-
-    let plane = Gm::new(
-        Mesh::new(&context, &cpu_plane),
-        PhysicalMaterial::new_opaque(
-            &context,
-            &CpuMaterial {
-                albedo: Srgba::new_opaque(128, 0, 70),
-                ..Default::default()
-            },
-        ),
-    );
-
-    let start = vec3(0.0, 0.0, 0.0);
-    let direction = vec3(10.0, 0.0, 0.0);
-    let sin_path = generate_sine_curve(start, direction, 1.0, 1.0, 10.0, 32);
-
-    let mut tube = tube_s(&sin_path, 0.2, 16);
-
-    let mut cpu_tube: CpuMesh = CpuMesh {
-        positions: Positions::F32(tube.vertices),
-        indices: Indices::U32(tube.indices),
-        ..Default::default()
-    };
-
-    let y_offset = vec3(0., 2., 0.);
-
-    cpu_tube.compute_normals();
-    cpu_tube
-        .transform(Mat4::from_translation(y_offset))
-        .unwrap();
-
-    // let mut vectors = vec![];
-    let mut arrows = vec![];
-
-    for tangent in tube.tangents.iter() {
-        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-
-        let rotation = Mat4::look_at_lh(
-            // Point3::from_vec(tangent.point + y_offset),
-            Point3::origin(),
-            Point3::from_vec(tangent.direction.normalize()),
-            Vec3::unit_y(),
-        );
-
-        // let init_direction = Vec3::unit_x();
-        // let axis = init_direction.cross(tangent.direction);
-        // let d = init_direction.dot(tangent.direction);
-        // let angle = radians(d);
-
-        // let rotation = if d.acos().abs() < 1e-6 {
-        //     Mat4::identity()
-        // } else {
-        //     Mat4::from_axis_angle(axis, angle)
-        // };
-
-        // + y_offset
-
-        // * rotation
-
-        // Mat4::from_translation(tangent.point + y_offset)
-        let brr = Mat4::from_translation(tangent.point + y_offset)
-            * rotation
-            * Mat4::from_nonuniform_scale(0.6, 0.01, 0.01);
-
-        // они накладываются в обратном порядке(вроде бы)
-        // 1. удлинняем
-        // 2. крутим
-        // 3. позиционируем
-
-        arrow.transform(brr).unwrap();
-
-        // arrow
-        //     .transform(Mat4::from_translation(tangent.point + y_offset) * Mat4::from_scale(0.05))
-        //     .unwrap();
-
-        let arrow = Gm::new(
-            Mesh::new(&context, &arrow),
-            PhysicalMaterial {
-                albedo: Srgba::BLUE,
-                ..Default::default()
-            },
-        );
-
-        arrows.push(arrow);
-    }
-
-    let default_material = PhysicalMaterial::new_opaque(&context, &CpuMaterial::default());
-
-    let mut transparent = PhysicalMaterial::new_transparent(
-        &context,
-        &CpuMaterial {
-            albedo: Srgba {
-                r: 255,
-                g: 255,
-                b: 255,
-                a: 255,
-            },
+    let mut arrow = Gm::new(
+        Mesh::new(&context, &arrow),
+        PhysicalMaterial {
+            albedo: Srgba::RED,
             ..Default::default()
         },
     );
 
-    transparent.render_states.cull = Cull::FrontAndBack;
-
-    let gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), transparent);
-
-    // wireframe
-    let wireframe_material = PhysicalMaterial::new_opaque(
-        &context,
-        &CpuMaterial {
-            albedo: Srgba::new_opaque(220, 50, 50),
-            roughness: 0.7,
-            metallic: 0.8,
-            ..Default::default()
-        },
-    );
-
-    let mut cylinder = CpuMesh::cylinder(12);
-    cylinder
-        .transform(Mat4::from_nonuniform_scale(1.0, 0.007, 0.007))
-        .unwrap();
-
-    let edges = Gm::new(
-        InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
-        wireframe_material.clone(),
-    );
-
-    let mut sphere = CpuMesh::sphere(8);
-    sphere.transform(Mat4::from_scale(0.015)).unwrap();
-    let vertices = Gm::new(
-        InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
-        wireframe_material,
-    );
+    // test sphere
+    let mut sphere = CpuMesh::sphere(16);
+    let mv = Mat4::from_scale(0.1);
+    sphere.transform(mv).unwrap();
+    let mut sphere = Gm::new(Mesh::new(&context, &sphere), PhysicalMaterial::default());
 
     // camera part
     let camera_position = vec3(0., 0., 2.);
-    let target = vec3(0., 2.0, 0.);
+    let target = vec3(0., 0.0, 0.);
     let up_v = vec3(0., 1., 0.);
 
     let mut camera = Camera::new_perspective(
@@ -220,6 +98,11 @@ fn main() {
 
     let mut control = OrbitControl::new(camera.target(), 1.0, 100.0);
 
+    // debug menu
+    let mut show_axes = false;
+    let mut sphere_position = vec3(0.5, 0.3, 0.35);
+    let arrow_direction = Vec3::unit_x();
+
     window.render_loop(move |mut frame_input| {
         let mut panel_width = 0.0;
 
@@ -233,6 +116,16 @@ fn main() {
 
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     ui.heading("Debug Panel");
+                    ui.checkbox(&mut show_axes, "Display axes");
+                    ui.add(
+                        Slider::new(&mut sphere_position.x, -1.0..=1.0).text("Sphere X position"),
+                    );
+                    ui.add(
+                        Slider::new(&mut sphere_position.y, -1.0..=1.0).text("Sphere Y position"),
+                    );
+                    ui.add(
+                        Slider::new(&mut sphere_position.z, -1.0..=1.0).text("Sphere Z position"),
+                    );
 
                     if ui.button("Select file").clicked() {
                         // block draw thread
@@ -264,26 +157,49 @@ fn main() {
 
         camera.set_viewport(viewport);
         control.handle_events(&mut camera, &mut frame_input.events);
+        sphere.set_transformation(Mat4::from_translation(sphere_position));
+
+        // rotate arrow 
+        // assume that arrow at the origin (0., 0., 0.)
+        let initial_direction = arrow_direction; // (1., 0., 0.);
+        let direction_vector = vec3(
+            sphere_position.x - 0.,
+            sphere_position.y - 0.,
+            sphere_position.z - 0.,
+        );
+        let norm_direction_vector = direction_vector.normalize();
+
+        let rotation_axis = Vec3::cross( initial_direction, norm_direction_vector);
+
+        let norm_rotation_axis = rotation_axis.normalize();
+
+        let dot = Vec3::dot(initial_direction, norm_direction_vector);
+
+        let rotation_angle = dot.acos();
+
+        let degree = rotation_angle * 180.0 / std::f32::consts::PI;
+
+        let rotation = if norm_rotation_axis.x.is_nan() || norm_rotation_axis.y.is_nan() || norm_rotation_axis.y.is_nan() {
+            // why this method ignores me when 3.1415927 180.0° Vector3 [-1.0, 0.0, 0.0] and not flipping x?
+            Mat4::from_axis_angle(norm_direction_vector, degrees(degree))
+        } else {
+            Mat4::from_axis_angle(norm_rotation_axis, degrees(degree))
+        };
+
+        arrow.set_transformation(rotation);
 
         frame_input
             .screen()
-            // Clear the color and depth of the screen render target
             .clear(ClearState::color_and_depth(1., 1., 1., 1.0, 1.0))
-            // Render the triangle with the color material which uses the per vertex colors defined at construction
-            .render(
-                &camera,
-                gm_tube.into_iter().chain(&vertices),
-                // .chain(&edges),
-                &[&ambient],
-            )
-            .render(&camera, &arrows, &[&ambient, &directional])
-            // .render(&camera, &vectors, &[&ambient])
-            .render(
-                &camera,
-                plane.into_iter().chain(&axes),
-                &[&ambient, &directional],
-            )
-            .write(|| gui.render())
+            .render(&camera, &arrow, &[&ambient, &directional])
+            .render(&camera, &sphere, &[&ambient, &directional])
+            .write(|| {
+                if show_axes {
+                    axes.render(&camera, &[&ambient, &directional]);
+                }
+
+                gui.render()
+            })
             .unwrap();
 
         FrameOutput::default()
