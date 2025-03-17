@@ -158,6 +158,12 @@ pub trait Curve {
             z: 0.,
         };
 
+        let p = self.get_point(0.).unwrap();
+
+        let camera = Vector3::new(0., 0., 2.);
+
+        let direction = camera - p;
+
         let normal = perpendicular_vector(tangents[0], direction);
 
         // if tx <= min {
@@ -175,6 +181,14 @@ pub trait Curve {
 
         // Compute subsequent normals and binormals
         for i in 1..=segments {
+            let u = i as f32 / segments as f32;
+
+            let p = self.get_point(u).unwrap();
+
+            let camera = Vector3::new(0., 0., 2.);
+
+            let direction = camera - p;
+
             // let normal = Vector3::new(tangents[i].x, 0.0, -tangents[i].z).normalize();
             let normal = perpendicular_vector(tangents[0], direction);
             normals.push(normal.normalize());
