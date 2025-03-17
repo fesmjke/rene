@@ -1,5 +1,6 @@
 use rene::{
-    tube::tube_s,
+    curves::SineCurve,
+    tube::Tube,
     wireframe::{edge_transformations, vertex_transformations},
 };
 use std::path::Path;
@@ -62,18 +63,18 @@ fn main() {
 
     // debug menu
     let mut show_axes = false;
-    
+
     // debug sphere and debug arrow
     let mut sphere_position = vec3(0.5, 0.3, 0.35);
     let mut show_debug_sphere = false;
     let mut show_debug_arrow = false;
-    
+
     // tube debug
     let mut show_tube = false;
     let mut show_tube_indices = false;
     let mut show_tube_vertices = false;
     let mut show_tube_transparent = false;
-    let mut show_tube_arrows = false; 
+    let mut show_tube_arrows = false;
 
     // gl context init
     let context = window.gl();
@@ -112,13 +113,10 @@ fn main() {
     );
 
     // tube
-    let curve = vec![
-        Vector3::new(0.0, 0.0, 0.0),
-        Vector3::new(1.0, 1.0, 0.0),
-        Vector3::new(2.0, 0.0, 0.0),
-    ];
+    let curve = SineCurve;
 
-    let tube = tube_s(&curve, 0.2, 16);
+    let tube = Tube::new(&curve, 32, 0.2, 16);
+    // let tube = tube_s(&curve, 0.2, 16);
     let mut cpu_tube = CpuMesh {
         positions: three_d::Positions::F32(tube.vertices),
         indices: three_d::Indices::U32(tube.indices),
@@ -147,30 +145,39 @@ fn main() {
     let mut tube_arrows = vec![];
 
     let arrow_scale = Mat4::from_nonuniform_scale(0.3, 0.7, 0.7);
-    
-    for tangent in tube.tangents.iter() {
+
+    // TODO replace tangent/binormal/normal arrow generation with method, or function
+    for (curve_index, point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
 
-        let rotation = arrow_to_dir_pos(Point3::origin(), tangent.direction);
+        let rotation = arrow_to_dir_pos(Point3::origin(), tube.tangents_frame[curve_index]);
         arrow.transform(rotation).unwrap();
 
-        arrow.transform(Mat4::from_translation(tangent.point)).unwrap();
+        arrow.transform(Mat4::from_translation(*point)).unwrap();
 
-        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
-            albedo: Srgba { r: 255, g: 255, b: 0, a: 0 },
-            ..Default::default()
-        }));
+        tube_arrows.push(Gm::new(
+            Mesh::new(&context, &arrow),
+            PhysicalMaterial {
+                albedo: Srgba {
+                    r: 255,
+                    g: 255,
+                    b: 0,
+                    a: 0,
+                },
+                ..Default::default()
+            },
+        ));
     }
 
-    for normal in tube.normals.iter() {
+    for (curve_index,point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
 
-        let rotation = arrow_to_dir_pos(Point3::origin(), normal.direction);
+        let rotation = arrow_to_dir_pos(Point3::origin(), tube.normals_frame[curve_index]);
         arrow.transform(rotation).unwrap();
 
-        arrow.transform(Mat4::from_translation(normal.point)).unwrap();
+        arrow.transform(Mat4::from_translation(*point)).unwrap();
 
         tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
             albedo: Srgba {
@@ -183,14 +190,14 @@ fn main() {
         }));
     }
 
-    for binormal in tube.binormals.iter() {
+    for (curve_index,point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
 
-        let rotation = arrow_to_dir_pos(Point3::origin(), binormal.direction);
+        let rotation = arrow_to_dir_pos(Point3::origin(), tube.binormals_frame[curve_index]);
         arrow.transform(rotation).unwrap();
 
-        arrow.transform(Mat4::from_translation(binormal.point)).unwrap();
+        arrow.transform(Mat4::from_translation(*point)).unwrap();
 
         tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
             albedo: Srgba::GREEN,
