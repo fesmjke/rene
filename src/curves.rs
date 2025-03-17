@@ -130,26 +130,29 @@ pub trait Curve {
         }
 
         // Initialize first normal and binormal
-        let mut normal = Vector3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        };
+        // let mut normal = Vector3 {
+        //     x: 0.0,
+        //     y: 0.0,
+        //     z: 0.0,
+        // };
         let tx = tangents[0].x.abs();
         let ty = tangents[0].y.abs();
         let tz = tangents[0].z.abs();
         let min = tx.min(ty).min(tz);
 
-        if tx <= min {
-            normal.x = 1.0;
-        } else if ty <= min {
-            normal.y = 1.0;
-        } else {
-            normal.z = 1.0;
-        }
+        let normal = Vector3::new(tangents[0].z, 0.0, -tangents[0].x);
+
+        // if tx <= min {
+        //     normal.x = 1.0;
+        // } else if ty <= min {
+        //     normal.y = 1.0;
+        // } else {
+        //     normal.z = 1.0;
+        // }
 
         let mut vec = tangents[0].cross(normal).normalize();
-        normals.push(tangents[0].cross(vec));
+        // normals.push(tangents[0].cross(vec));
+        normals.push(normal);
         binormals.push(tangents[0].cross(normals[0]));
 
         // Compute subsequent normals and binormals
@@ -167,17 +170,17 @@ pub trait Curve {
             binormals[i] = tangents[i].cross(normals[i]).normalize();
         }
 
-        if closed {
-            let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
-            if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
-                theta = -theta;
-            }
-            for i in 1..=segments {
-                let rot_mat = Mat4::from_axis_angle(tangents[i], radians(theta * i as f32));
-                normals[i] = rot_mat.transform_vector(normals[i]);
-                binormals[i] = tangents[i].cross(normals[i]);
-            }
-        }
+        // if closed {
+        //     let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
+        //     if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
+        //         theta = -theta;
+        //     }
+        //     for i in 1..=segments {
+        //         let rot_mat = Mat4::from_axis_angle(tangents[i], radians(theta * i as f32));
+        //         normals[i] = rot_mat.transform_vector(normals[i]);
+        //         binormals[i] = tangents[i].cross(normals[i]);
+        //     }
+        // }
 
         FrenetFrame {
             tangents,
