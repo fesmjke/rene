@@ -5,10 +5,10 @@ use rene::{
 use std::path::Path;
 
 use three_d::{
-    AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMesh, CpuModel,
-    DirectionalLight, EuclideanSpace, FrameOutput, Gm, InnerSpace, Mat4, Mesh, Model, Object,
-    OrbitControl, PhysicalMaterial, Point3, Srgba, Vector3, Viewport, Window, WindowSettings,
-    degrees, rotation_matrix_from_dir_to_dir, vec3,
+    AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
+    Cull, DirectionalLight, EuclideanSpace, FrameOutput, Gm, InnerSpace, InstancedMesh, Mat4, Mesh,
+    Model, Object, OrbitControl, PhysicalMaterial, Point3, Srgba, Vector3, Viewport, Window,
+    WindowSettings, degrees, rotation_matrix_from_dir_to_dir, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -65,6 +65,10 @@ fn main() {
     let mut sphere_position = vec3(0.5, 0.3, 0.35);
     let mut show_debug_sphere = false;
     let mut show_debug_arrow = false;
+    let mut show_tube = false;
+    let mut show_tube_indices = false;
+    let mut show_tube_vertices = false;
+    let mut show_tube_transparent = false;
 
     let context = window.gl();
     let mut gui = three_d::GUI::new(&context);
@@ -82,7 +86,7 @@ fn main() {
     );
 
     // debug arrow
-    let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+    let arrow = CpuMesh::arrow(0.9, 0.5, 16);
 
     let mut arrow = Gm::new(
         Mesh::new(&context, &arrow),
@@ -93,10 +97,72 @@ fn main() {
     );
 
     // debug sphere
-    let mut sphere = CpuMesh::sphere(16);
+    let mut debug_sphere = CpuMesh::sphere(16);
     let mv = Mat4::from_scale(0.1);
-    sphere.transform(mv).unwrap();
-    let mut sphere = Gm::new(Mesh::new(&context, &sphere), PhysicalMaterial::default());
+    debug_sphere.transform(mv).unwrap();
+    let mut debug_sphere = Gm::new(
+        Mesh::new(&context, &debug_sphere),
+        PhysicalMaterial::default(),
+    );
+
+    // tube
+    let curve = vec![
+        Vector3::new(0.0, 0.0, 0.0),
+        Vector3::new(1.0, 1.0, 0.0),
+        Vector3::new(2.0, 0.0, 0.0),
+    ];
+
+    let tube = tube_s(&curve, 0.2, 16);
+    let mut cpu_tube = CpuMesh {
+        positions: three_d::Positions::F32(tube.vertices),
+        indices: three_d::Indices::U32(tube.indices),
+        ..Default::default()
+    };
+    cpu_tube.compute_normals();
+
+    let default_material = PhysicalMaterial::default();
+    let transparent_material = PhysicalMaterial::new_transparent(
+        &context,
+        &CpuMaterial {
+            albedo: Srgba {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255,
+            },
+            ..Default::default()
+        },
+    );
+
+    let mut gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), default_material.clone());
+
+    // tube wireframe
+    let wireframe_material = PhysicalMaterial::new_opaque(
+        &context,
+        &CpuMaterial {
+            albedo: Srgba::new_opaque(220, 50, 50),
+            roughness: 0.7,
+            metallic: 0.8,
+            ..Default::default()
+        },
+    );
+
+    let mut cylinder = CpuMesh::cylinder(12);
+    cylinder
+        .transform(Mat4::from_nonuniform_scale(1.0, 0.007, 0.007))
+        .unwrap();
+
+    let edges = Gm::new(
+        InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
+        wireframe_material.clone(),
+    );
+
+    let mut sphere = CpuMesh::sphere(8);
+    sphere.transform(Mat4::from_scale(0.015)).unwrap();
+    let vertices = Gm::new(
+        InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
+        wireframe_material,
+    );
 
     // camera part
     let camera_position = vec3(0., 0., 2.);
@@ -132,6 +198,13 @@ fn main() {
                     ui.checkbox(&mut show_axes, "Display axes");
                     ui.checkbox(&mut show_debug_arrow, "Display debug arrow");
                     ui.checkbox(&mut show_debug_sphere, "Display debug sphere");
+                    ui.checkbox(&mut show_tube, "Display tube");
+
+                    if show_tube {
+                        ui.checkbox(&mut show_tube_vertices, "Display tube vertices");
+                        ui.checkbox(&mut show_tube_indices, "Display tube indices");
+                        ui.checkbox(&mut show_tube_transparent, "Display tube as transparent");
+                    }
 
                     if show_debug_sphere {
                         ui.add(
@@ -180,7 +253,7 @@ fn main() {
         control.handle_events(&mut camera, &mut frame_input.events);
 
         if show_debug_sphere {
-            sphere.set_transformation(Mat4::from_translation(sphere_position));
+            debug_sphere.set_transformation(Mat4::from_translation(sphere_position));
         }
 
         if show_debug_arrow && show_debug_sphere {
@@ -190,6 +263,14 @@ fn main() {
             let brr = arrow_to_dir_pos(arrow_origin, dir);
 
             arrow.set_transformation(brr);
+        }
+
+        if show_tube_transparent {
+            gm_tube.material = transparent_material.clone();
+            gm_tube.material.render_states.cull = Cull::FrontAndBack;
+        } else {
+            gm_tube.material = default_material.clone();
+            gm_tube.material.render_states.cull = Default::default();
         }
 
         frame_input
@@ -205,7 +286,23 @@ fn main() {
                 }
 
                 if show_debug_sphere {
-                    sphere.render(&camera, &[&ambient, &directional]);
+                    debug_sphere.render(&camera, &[&ambient, &directional]);
+                }
+
+                if show_tube {
+                    gm_tube.render(&camera, &[&ambient, &directional]);
+
+                    if show_tube_vertices {
+                        for vertex in vertices.into_iter() {
+                            vertex.render(&camera, &[&ambient, &directional]);
+                        }
+                    }
+
+                    if show_tube_indices {
+                        for edge in edges.into_iter() {
+                            edge.render(&camera, &[&ambient, &directional]);
+                        }
+                    }
                 }
 
                 gui.render()
