@@ -1,35 +1,42 @@
-use three_d::{InnerSpace, Vec3, Vector3};
+use three_d::{InnerSpace, Vec3};
 
-use crate::curves::{Frame, compute_frenet_frames};
+use crate::curves::{Curve, FrenetFrame};
+
+pub struct VPair {
+    pub point: Vec3,
+    pub direction: Vec3,
+}
 
 pub struct Tube {
     pub vertices: Vec<Vec3>,
     pub indices: Vec<u32>,
+    pub center_points: Vec<Vec3>,
     pub normals: Vec<Vec3>,
-    pub binormals: Vec<Vec3>,
-    pub tangents: Vec<Vec3>,
+    pub normals_frame: Vec<Vec3>,
+    pub binormals_frame: Vec<Vec3>,
+    pub tangents_frame: Vec<Vec3>,
 }
 
 impl Tube {
     pub fn new(
-        path: &[Vec3],
+        path: &dyn Curve,
         tubular_segments: usize,
         radius: f32,
         radial_segments: usize,
     ) -> Self {
-        let frame = compute_frenet_frames(tubular_segments);
+        let frame = path.compute_frenet_frames(tubular_segments);
 
         let mut vertices = vec![];
         let mut normals = vec![];
         let mut indices = vec![];
-
-        // buffer
+        let mut center_points = vec![];
 
         Self::generate_buffer(
             path,
             &mut indices,
             &mut vertices,
             &mut normals,
+            &mut center_points,
             tubular_segments,
             radius,
             radial_segments,
@@ -40,27 +47,33 @@ impl Tube {
             vertices,
             indices,
             normals,
-            binormals: frame.binormals,
-            tangents: frame.tangents,
+            center_points,
+            normals_frame: frame.normals,
+            binormals_frame: frame.binormals,
+            tangents_frame: frame.tangents,
         }
     }
 
     fn generate_buffer(
-        path: &[Vec3],
+        curve: &dyn Curve,
         indices: &mut Vec<u32>,
         vertices: &mut Vec<Vec3>,
         normals: &mut Vec<Vec3>,
+        points: &mut Vec<Vec3>,
         tubular_segments: usize,
         radius: f32,
         radial_segments: usize,
-        frames: &Frame,
+        frames: &FrenetFrame,
     ) {
         // tubular segments -> len of path
-        for i in 0..tubular_segments {
+
+        for (i, point) in curve.get_points(tubular_segments).iter().enumerate() {
+            points.push(*point);
+
             Self::generate_segment(
                 vertices,
                 normals,
-                &path[i],
+                &point,
                 radial_segments,
                 radius,
                 &frames.normals[i],
@@ -74,7 +87,7 @@ impl Tube {
     fn generate_segment(
         vertices: &mut Vec<Vec3>,
         normals: &mut Vec<Vec3>,
-        point: &Vector3<f32>,
+        point: &Vec3,
         radial_segments: usize,
         radius: f32,
         frame_N: &Vec3,
@@ -109,13 +122,13 @@ impl Tube {
     }
 
     fn generate_indices(indices: &mut Vec<u32>, tubular_segments: usize, radial_segments: usize) {
-        for i in 0..radial_segments - 1 {
-            for j in 0..tubular_segments {
-                let next_j = (j + 1) % tubular_segments;
-                let current = (i * tubular_segments + j) as u32;
-                let next = ((i + 1) * tubular_segments + j) as u32;
-                let current_next = (i * tubular_segments + next_j) as u32;
-                let next_next = ((i + 1) * tubular_segments + next_j) as u32;
+        for i in 0..tubular_segments {
+            for j in 0..radial_segments {
+                let next_j = (j + 1) % radial_segments;
+                let current = (i * radial_segments + j) as u32;
+                let next = ((i + 1) * radial_segments + j) as u32;
+                let current_next = (i * radial_segments + next_j) as u32;
+                let next_next = ((i + 1) * radial_segments + next_j) as u32;
 
                 indices.push(current);
                 indices.push(next);
@@ -126,93 +139,5 @@ impl Tube {
                 indices.push(next_next);
             }
         }
-        println!("{:?}", indices);
-    }
-}
-
-pub struct VPair {
-    pub point: Vec3,
-    pub direction: Vec3,
-}
-
-pub struct TubeS {
-    pub vertices: Vec<Vec3>,
-    pub indices: Vec<u32>,
-    pub normals: Vec<VPair>,
-    pub binormals: Vec<VPair>,
-    pub tangents: Vec<VPair>,
-}
-
-pub fn tube_s(curve: &[Vec3], radius: f32, segments: usize) -> TubeS {
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    let mut normals = vec![];
-    let mut binormals = vec![];
-    let mut tangents = vec![];
-
-    for i in 0..curve.len() {
-        let p = curve[i];
-        let tangent = if i < curve.len() - 1 {
-            (curve[i + 1] - p).normalize()
-        } else {
-            (p - curve[i - 1]).normalize()
-        };
-
-        tangents.push(VPair {
-            point: p,
-            direction: tangent,
-        });
-
-        let normal = if tangent.z.abs() < tangent.x.abs() {
-            Vector3::new(-tangent.y, tangent.x, 0.0).normalize()
-        } else {
-            Vector3::new(0.0, -tangent.z, tangent.y).normalize()
-        };
-
-        normals.push(VPair {
-            point: p,
-            direction: normal,
-        });
-
-        let binormal = tangent.cross(normal).normalize();
-
-        binormals.push(VPair {
-            point: p,
-            direction: binormal,
-        });
-
-        for j in 0..segments {
-            let angle = (j as f32) / (segments as f32) * std::f32::consts::TAU;
-            let offset = normal * angle.cos() + binormal * angle.sin();
-            vertices.push(p + offset * radius);
-        }
-    }
-
-    let rings = curve.len();
-    for i in 0..rings - 1 {
-        for j in 0..segments {
-            let next_j = (j + 1) % segments;
-            let current = (i * segments + j) as u32;
-            let next = ((i + 1) * segments + j) as u32;
-            let current_next = (i * segments + next_j) as u32;
-            let next_next = ((i + 1) * segments + next_j) as u32;
-
-            indices.push(current);
-            indices.push(next);
-            indices.push(current_next);
-
-            indices.push(current_next);
-            indices.push(next);
-            indices.push(next_next);
-        }
-    }
-
-    TubeS {
-        vertices,
-        indices,
-        normals,
-        binormals,
-        tangents,
     }
 }
