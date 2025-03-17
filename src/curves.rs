@@ -6,6 +6,18 @@ pub struct FrenetFrame {
     pub binormals: Vec<Vec3>,
 }
 
+/// Computes a perpendicular vector to `v` that is as close as possible to `preferred_direction`.
+fn perpendicular_vector(v: Vector3<f32>, preferred_direction: Vector3<f32>) -> Vector3<f32> {
+    let dot_product = v.dot(preferred_direction);
+    let v_norm_sq = v.magnitude2();
+
+    // Project preferred_direction onto v
+    let projection = (dot_product / v_norm_sq) * v;
+
+    // Subtract projection to get a perpendicular component
+    preferred_direction - projection
+}
+
 pub trait Curve {
     /// Returns the number of divisions for arc length calculations.
     fn arc_length_divisions(&self) -> usize {
@@ -140,7 +152,13 @@ pub trait Curve {
         let tz = tangents[0].z.abs();
         let min = tx.min(ty).min(tz);
 
-        let normal = Vector3::new(tangents[0].z, 0.0, -tangents[0].x);
+        let direction = Vector3 {
+            x: 0.,
+            y: 1.,
+            z: 0.,
+        };
+
+        let normal = perpendicular_vector(tangents[0], direction);
 
         // if tx <= min {
         //     normal.x = 1.0;
@@ -157,8 +175,9 @@ pub trait Curve {
 
         // Compute subsequent normals and binormals
         for i in 1..=segments {
-            let normal = Vector3::new(tangents[i].z, 0.0, -tangents[i].x).normalize();
-            normals.push(normal);
+            // let normal = Vector3::new(tangents[i].x, 0.0, -tangents[i].z).normalize();
+            let normal = perpendicular_vector(tangents[0], direction);
+            normals.push(normal.normalize());
             binormals.push(tangents[i].cross(normals[i]));
 
             // vec = tangents[i - 1].cross(tangents[i]);
