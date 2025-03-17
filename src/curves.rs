@@ -152,12 +152,12 @@ pub trait Curve {
 
         // let mut vec = tangents[0].cross(normal).normalize();
         // normals.push(tangents[0].cross(vec));
-        normals.push(normal);
+        normals.push(normal.normalize());
         binormals.push(tangents[0].cross(normals[0]));
 
         // Compute subsequent normals and binormals
         for i in 1..=segments {
-            let normal = Vector3::new(tangents[i].z, 0.0, -tangents[i].x);
+            let normal = Vector3::new(tangents[i].z, 0.0, -tangents[i].x).normalize();
             normals.push(normal);
             binormals.push(tangents[i].cross(normals[i]));
 
