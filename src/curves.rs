@@ -119,7 +119,7 @@ pub trait Curve {
     }
 
     /// Generates the Frenet Frames for the curve in 3D space.
-    fn compute_frenet_frames(&self, segments: usize) -> FrenetFrame {
+    fn compute_frenet_frames(&self, segments: usize, closed: bool) -> FrenetFrame {
         let mut tangents = Vec::with_capacity(segments + 1);
         let mut normals = Vec::with_capacity(segments + 1);
         let mut binormals = Vec::with_capacity(segments + 1);
@@ -167,17 +167,17 @@ pub trait Curve {
             binormals[i] = tangents[i].cross(normals[i]).normalize();
         }
 
-        // TODO if closed needed - handle closed curve
-        // if closed {
-        //     let mut theta = clamp(normals[0].dot(&normals[segments]), -1.0, 1.0).acos() / segments as f64;
-        //     if tangents[0].dot(&normals[0].cross(&normals[segments])) > 0.0 {
-        //         theta = -theta;
-        //     }
-        //     for i in 1..=segments {
-        //         normals[i] = normals[i].apply_matrix4(&Matrix4::rotation_axis(&tangents[i], theta * i as f64));
-        //         binormals[i] = tangents[i].cross(&normals[i]);
-        //     }
-        // }
+        if closed {
+            let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
+            if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
+                theta = -theta;
+            }
+            for i in 1..=segments {
+                let rot_mat = Mat4::from_axis_angle(tangents[i], radians(theta * i as f32));
+                normals[i] = rot_mat.transform_vector(normals[i]);
+                binormals[i] = tangents[i].cross(normals[i]);
+            }
+        }
 
         FrenetFrame {
             tangents,
