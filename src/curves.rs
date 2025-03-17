@@ -150,24 +150,25 @@ pub trait Curve {
         //     normal.z = 1.0;
         // }
 
-        let mut vec = tangents[0].cross(normal).normalize();
+        // let mut vec = tangents[0].cross(normal).normalize();
         // normals.push(tangents[0].cross(vec));
         normals.push(normal);
         binormals.push(tangents[0].cross(normals[0]));
 
         // Compute subsequent normals and binormals
         for i in 1..=segments {
-            normals.push(normals[i - 1].clone());
-            binormals.push(binormals[i - 1].clone());
+            let normal = Vector3::new(tangents[i].z, 0.0, -tangents[i].x);
+            normals.push(normal);
+            binormals.push(tangents[i].cross(normals[i]));
 
-            vec = tangents[i - 1].cross(tangents[i]);
-            if vec.magnitude() > f32::EPSILON {
-                let vec = vec.normalize();
-                let theta = (tangents[i - 1].dot(tangents[i]).clamp(-1.0, 1.0));
-                let rot_mat = Mat4::from_axis_angle(vec, radians(theta));
-                normals[i] = rot_mat.transform_vector(normals[i]);
-            }
-            binormals[i] = tangents[i].cross(normals[i]).normalize();
+            // vec = tangents[i - 1].cross(tangents[i]);
+            // if vec.magnitude() > f32::EPSILON {
+            //     let vec = vec.normalize();
+            //     let theta = (tangents[i - 1].dot(tangents[i]).clamp(-1.0, 1.0));
+            //     let rot_mat = Mat4::from_axis_angle(vec, radians(theta));
+            //     normals[i] = rot_mat.transform_vector(normals[i]);
+            // }
+            // binormals[i] = tangents[i].cross(normals[i]).normalize();
         }
 
         // if closed {

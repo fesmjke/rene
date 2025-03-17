@@ -21,7 +21,7 @@ impl Tube {
     pub fn new(
         path: &dyn Curve,
         tubular_segments: usize,
-        closed: bool, 
+        closed: bool,
         radius: f32,
         radial_segments: usize,
     ) -> Self {
