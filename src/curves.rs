@@ -193,7 +193,7 @@ impl Curve for SineCurve {
     fn get_point(&self, t: f32) -> Option<Vec3> {
         let tx = t * 3.0 - 1.5;
         let ty = (2. * std::f32::consts::PI * t).sin();
-        let tz = 0.0;
+        let tz = (2. * std::f32::consts::PI * t).cos();
 
         Some(Vec3::new(tx, ty, tz))
     }
