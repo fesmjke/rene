@@ -75,6 +75,10 @@ fn main() {
     let mut show_tube_vertices = false;
     let mut show_tube_transparent = false;
     let mut show_tube_arrows = false;
+    let mut tubular_segments = 5;
+    let mut tubular_radial_segments = 5;
+    let mut tubular_radius = 0.2;
+    let mut tubular_closed = false;
 
     // gl context init
     let context = window.gl();
@@ -115,13 +119,20 @@ fn main() {
     // tube
     let curve = SineCurve;
 
-    let tube = Tube::new(&curve, 32, 0.2, 16);
-    // let tube = tube_s(&curve, 0.2, 16);
+    let tube = Tube::new(
+        &curve,
+        tubular_segments,
+        tubular_closed,
+        tubular_radius,
+        tubular_radial_segments,
+    );
+
     let mut cpu_tube = CpuMesh {
         positions: three_d::Positions::F32(tube.vertices),
         indices: three_d::Indices::U32(tube.indices),
         ..Default::default()
     };
+
     cpu_tube.compute_normals();
 
     let default_material = PhysicalMaterial::default();
@@ -170,7 +181,7 @@ fn main() {
         ));
     }
 
-    for (curve_index,point) in tube.center_points.iter().enumerate() {
+    for (curve_index, point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
 
@@ -179,18 +190,21 @@ fn main() {
 
         arrow.transform(Mat4::from_translation(*point)).unwrap();
 
-        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
-            albedo: Srgba {
-                r: 190,
-                g: 100,
-                b: 0,
-                a: 0,
+        tube_arrows.push(Gm::new(
+            Mesh::new(&context, &arrow),
+            PhysicalMaterial {
+                albedo: Srgba {
+                    r: 190,
+                    g: 100,
+                    b: 0,
+                    a: 0,
+                },
+                ..Default::default()
             },
-            ..Default::default()
-        }));
+        ));
     }
 
-    for (curve_index,point) in tube.center_points.iter().enumerate() {
+    for (curve_index, point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
 
@@ -199,10 +213,13 @@ fn main() {
 
         arrow.transform(Mat4::from_translation(*point)).unwrap();
 
-        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
-            albedo: Srgba::GREEN,
-            ..Default::default()
-        }));
+        tube_arrows.push(Gm::new(
+            Mesh::new(&context, &arrow),
+            PhysicalMaterial {
+                albedo: Srgba::GREEN,
+                ..Default::default()
+            },
+        ));
     }
 
     // tube wireframe
@@ -221,16 +238,16 @@ fn main() {
         .transform(Mat4::from_nonuniform_scale(1.0, 0.007, 0.007))
         .unwrap();
 
-    let edges = Gm::new(
+    let mut edges = Gm::new(
         InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
         wireframe_material.clone(),
     );
 
     let mut sphere = CpuMesh::sphere(8);
     sphere.transform(Mat4::from_scale(0.015)).unwrap();
-    let vertices = Gm::new(
+    let mut vertices = Gm::new(
         InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
-        wireframe_material,
+        wireframe_material.clone(),
     );
 
     // camera part
@@ -274,6 +291,16 @@ fn main() {
                         ui.checkbox(&mut show_tube_indices, "Display tube indices");
                         ui.checkbox(&mut show_tube_transparent, "Display tube as transparent");
                         ui.checkbox(&mut show_tube_arrows, "Display tube vector arrows");
+                        ui.checkbox(&mut tubular_closed, "Tubular closed");
+
+                        ui.add(
+                            Slider::new(&mut tubular_segments, 1..=100).text("Tubular segments"),
+                        );
+                        ui.add(
+                            Slider::new(&mut tubular_radial_segments, 1..=100)
+                                .text("Tubular radial segments"),
+                        );
+                        ui.add(Slider::new(&mut tubular_radius, 0.1..=1.0).text("Tubular radius"));
                     }
 
                     if show_debug_sphere {
@@ -335,12 +362,105 @@ fn main() {
             arrow.set_transformation(brr);
         }
 
-        if show_tube_transparent {
-            gm_tube.material = transparent_material.clone();
-            gm_tube.material.render_states.cull = Cull::FrontAndBack;
-        } else {
-            gm_tube.material = default_material.clone();
-            gm_tube.material.render_states.cull = Default::default();
+        // tube
+        // horrible performance
+        if show_tube {
+            let tube = Tube::new(&curve, tubular_segments, tubular_closed, tubular_radius, tubular_radial_segments);
+            
+            cpu_tube = CpuMesh {
+                positions: three_d::Positions::F32(tube.vertices),
+                indices: three_d::Indices::U32(tube.indices),
+                ..Default::default()
+            };
+        
+            cpu_tube.compute_normals();
+
+            gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), default_material.clone());
+
+
+            if show_tube_transparent {
+                gm_tube.material = transparent_material.clone();
+                gm_tube.material.render_states.cull = Cull::FrontAndBack;
+            } else {
+                gm_tube.material = default_material.clone();
+                gm_tube.material.render_states.cull = Default::default();
+            }
+
+            tube_arrows.clear();
+
+            for (curve_index, point) in tube.center_points.iter().enumerate() {
+                let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+                arrow.transform(arrow_scale).unwrap();
+        
+                let rotation = arrow_to_dir_pos(Point3::origin(), tube.tangents_frame[curve_index]);
+                arrow.transform(rotation).unwrap();
+        
+                arrow.transform(Mat4::from_translation(*point)).unwrap();
+        
+                tube_arrows.push(Gm::new(
+                    Mesh::new(&context, &arrow),
+                    PhysicalMaterial {
+                        albedo: Srgba {
+                            r: 255,
+                            g: 255,
+                            b: 0,
+                            a: 0,
+                        },
+                        ..Default::default()
+                    },
+                ));
+            }
+        
+            for (curve_index, point) in tube.center_points.iter().enumerate() {
+                let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+                arrow.transform(arrow_scale).unwrap();
+        
+                let rotation = arrow_to_dir_pos(Point3::origin(), tube.normals_frame[curve_index]);
+                arrow.transform(rotation).unwrap();
+        
+                arrow.transform(Mat4::from_translation(*point)).unwrap();
+        
+                tube_arrows.push(Gm::new(
+                    Mesh::new(&context, &arrow),
+                    PhysicalMaterial {
+                        albedo: Srgba {
+                            r: 190,
+                            g: 100,
+                            b: 0,
+                            a: 0,
+                        },
+                        ..Default::default()
+                    },
+                ));
+            }
+        
+            for (curve_index, point) in tube.center_points.iter().enumerate() {
+                let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+                arrow.transform(arrow_scale).unwrap();
+        
+                let rotation = arrow_to_dir_pos(Point3::origin(), tube.binormals_frame[curve_index]);
+                arrow.transform(rotation).unwrap();
+        
+                arrow.transform(Mat4::from_translation(*point)).unwrap();
+        
+                tube_arrows.push(Gm::new(
+                    Mesh::new(&context, &arrow),
+                    PhysicalMaterial {
+                        albedo: Srgba::GREEN,
+                        ..Default::default()
+                    },
+                ));
+            }
+
+            edges = Gm::new(
+                InstancedMesh::new(&context, &edge_transformations(&cpu_tube), &cylinder),
+                wireframe_material.clone(),
+            );
+
+            vertices = Gm::new(
+                InstancedMesh::new(&context, &vertex_transformations(&cpu_tube), &sphere),
+                wireframe_material.clone(),
+            );
         }
 
         frame_input
