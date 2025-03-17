@@ -1,16 +1,14 @@
 use rene::{
-    curves::generate_sine_curve,
     tube::tube_s,
     wireframe::{edge_transformations, vertex_transformations},
 };
 use std::path::Path;
 
 use three_d::{
-    AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMaterial, CpuMesh, CpuModel,
-    Cull, DirectionalLight, EuclideanSpace, FrameOutput, Gm, Indices, InnerSpace, InstancedMesh,
-    Mat4, Mesh, Model, Object, One, OrbitControl, PhysicalMaterial, Point3, Positions, Quaternion,
-    Rotation, Rotation3, SquareMatrix, Srgba, Transform, Vec3, Vector3, Vector4, Viewport, Window,
-    WindowSettings, Zero, degrees, radians, rotation_matrix_from_dir_to_dir, vec3,
+    AmbientLight, Axes, Camera, ClearState, ColorMaterial, Context, CpuMesh, CpuModel,
+    DirectionalLight, EuclideanSpace, FrameOutput, Gm, InnerSpace, Mat4, Mesh, Model, Object,
+    OrbitControl, PhysicalMaterial, Point3, Srgba, Vector3, Viewport, Window, WindowSettings,
+    degrees, rotation_matrix_from_dir_to_dir, vec3,
 };
 
 const WINDOW_WIDTH: u32 = 1280;
@@ -34,6 +32,22 @@ fn create_model(path: &Path, context: &Context) -> Gm<Mesh, PhysicalMaterial> {
     model
 }
 
+pub fn arrow_to_dir_pos(pos: Point3<f32>, dir: Vector3<f32>) -> three_d::Matrix4<f32> {
+    // for sure
+    let dir = dir.normalize();
+
+    let rotation = rotation_matrix_from_dir_to_dir(
+        // потому что стрелка направлена вдоль x
+        Point3::new(1.0, 0., 0.).to_vec(),
+        dir.normalize(),
+    );
+
+    let brr = Mat4::from_translation(pos.to_vec())
+        * rotation
+        * Mat4::from_nonuniform_scale(0.6, 0.01, 0.01);
+    brr
+}
+
 fn main() {
     let application_title = String::from("Example");
     let current_dir = std::env::current_dir().unwrap();
@@ -49,8 +63,8 @@ fn main() {
     // debug menu
     let mut show_axes = false;
     let mut sphere_position = vec3(0.5, 0.3, 0.35);
-    let arrow_direction = Vec3::unit_x();
-    let arrow_position = vec3(2., 2., 0.);
+    let mut show_debug_sphere = false;
+    let mut show_debug_arrow = false;
 
     let context = window.gl();
     let mut gui = three_d::GUI::new(&context);
@@ -67,25 +81,8 @@ fn main() {
         vec3(0.0, -1.0, -1.0),
     );
 
-    // test arrow
-    let direction_vector = vec3(sphere_position.x, sphere_position.y, sphere_position.z);
-
-    println!("{:?}", direction_vector.normalize());
-
-    // let rotation = Mat4::look_at_lh(
-    //     Point3::from_vec(arrow_position),
-    //     Point3::from_vec(direction_vector.normalize()),
-    //     Vec3::unit_y(),
-    // );
-
-    // println!("{:?}", rotation);
-
+    // debug arrow
     let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-    // let brr = Mat4::from_translation(arrow_position)
-    //     * rotation
-    //     * Mat4::from_nonuniform_scale(0.5, 0.01, 0.01);
-    // // let brr = Mat4::from_scale(0.5);
-    // arrow.transform(brr).unwrap();
 
     let mut arrow = Gm::new(
         Mesh::new(&context, &arrow),
@@ -95,7 +92,7 @@ fn main() {
         },
     );
 
-    // test sphere
+    // debug sphere
     let mut sphere = CpuMesh::sphere(16);
     let mv = Mat4::from_scale(0.1);
     sphere.transform(mv).unwrap();
@@ -131,16 +128,25 @@ fn main() {
 
                 SidePanel::left("side_panel").show(gui_context, |ui| {
                     ui.heading("Debug Panel");
+
                     ui.checkbox(&mut show_axes, "Display axes");
-                    ui.add(
-                        Slider::new(&mut sphere_position.x, -1.0..=1.0).text("Sphere X position"),
-                    );
-                    ui.add(
-                        Slider::new(&mut sphere_position.y, -1.0..=1.0).text("Sphere Y position"),
-                    );
-                    ui.add(
-                        Slider::new(&mut sphere_position.z, -1.0..=1.0).text("Sphere Z position"),
-                    );
+                    ui.checkbox(&mut show_debug_arrow, "Display debug arrow");
+                    ui.checkbox(&mut show_debug_sphere, "Display debug sphere");
+
+                    if show_debug_sphere {
+                        ui.add(
+                            Slider::new(&mut sphere_position.x, -1.0..=1.0)
+                                .text("Sphere X position"),
+                        );
+                        ui.add(
+                            Slider::new(&mut sphere_position.y, -1.0..=1.0)
+                                .text("Sphere Y position"),
+                        );
+                        ui.add(
+                            Slider::new(&mut sphere_position.z, -1.0..=1.0)
+                                .text("Sphere Z position"),
+                        );
+                    }
 
                     if ui.button("Select file").clicked() {
                         // block draw thread
@@ -172,46 +178,34 @@ fn main() {
 
         camera.set_viewport(viewport);
         control.handle_events(&mut camera, &mut frame_input.events);
-        sphere.set_transformation(Mat4::from_translation(sphere_position));
 
-        // rotate arrow
-        // assume that arrow at the origin (0., 0., 0.)
-        // let initial_direction = arrow_direction; // (1., 0., 0.);
-        // let direction_vector= sphere_position - arrow_position;
-        // let norm_direction_vector = direction_vector.normalize();
+        if show_debug_sphere {
+            sphere.set_transformation(Mat4::from_translation(sphere_position));
+        }
 
-        // let rotation_axis = Vec3::cross( initial_direction, norm_direction_vector);
+        if show_debug_arrow && show_debug_sphere {
+            let arrow_origin = Point3::new(0., 0., 0.);
+            let dir = Point3::from_vec(sphere_position) - arrow_origin;
 
-        // let norm_rotation_axis = rotation_axis.normalize();
+            let brr = arrow_to_dir_pos(arrow_origin, dir);
 
-        // let dot = Vec3::dot(initial_direction, norm_direction_vector);
-
-        // let rotation_angle = dot.acos();
-
-        // let degree = rotation_angle * 180.0 / std::f32::consts::PI;
-
-        // let rotation = if norm_rotation_axis.x.is_nan() || norm_rotation_axis.y.is_nan() || norm_rotation_axis.y.is_nan() {
-        //     // why this method ignores me when 3.1415927 180.0° Vector3 [-1.0, 0.0, 0.0] and not flipping x?
-        //     Mat4::from_axis_angle(norm_direction_vector, degrees(degree))
-        // } else {
-        //     Mat4::from_axis_angle(norm_rotation_axis, degrees(degree))
-        // };
-
-        let arrow_origin = Point3::new(1., 2., 3.);
-        let dir = Point3::from_vec(sphere_position) - arrow_origin;
-
-        let brr = arrow_to_dir_pos(arrow_origin, dir);
-
-        arrow.set_transformation(brr);
+            arrow.set_transformation(brr);
+        }
 
         frame_input
             .screen()
             .clear(ClearState::color_and_depth(1., 1., 1., 1.0, 1.0))
-            .render(&camera, &arrow, &[&ambient, &directional])
-            .render(&camera, &sphere, &[&ambient, &directional])
             .write(|| {
                 if show_axes {
                     axes.render(&camera, &[&ambient, &directional]);
+                }
+
+                if show_debug_arrow {
+                    arrow.render(&camera, &[&ambient, &directional]);
+                }
+
+                if show_debug_sphere {
+                    sphere.render(&camera, &[&ambient, &directional]);
                 }
 
                 gui.render()
@@ -220,20 +214,4 @@ fn main() {
 
         FrameOutput::default()
     });
-}
-
-pub fn arrow_to_dir_pos(pos: Point3<f32>, dir: Vector3<f32>) -> three_d::Matrix4<f32> {
-    // for sure
-    let dir = dir.normalize();
-
-    let rotation = rotation_matrix_from_dir_to_dir(
-        // потому что стрелка направлена вдоль x
-        Point3::new(1.0, 0., 0.).to_vec(),
-        dir.normalize(),
-    );
-
-    let brr = Mat4::from_translation(pos.to_vec())
-        * rotation
-        * Mat4::from_nonuniform_scale(0.6, 0.01, 0.01);
-    brr
 }
