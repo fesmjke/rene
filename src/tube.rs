@@ -21,10 +21,11 @@ impl Tube {
     pub fn new(
         path: &dyn Curve,
         tubular_segments: usize,
+        closed: bool, 
         radius: f32,
         radial_segments: usize,
     ) -> Self {
-        let frame = path.compute_frenet_frames(tubular_segments);
+        let frame = path.compute_frenet_frames(tubular_segments, closed);
 
         let mut vertices = vec![];
         let mut normals = vec![];
@@ -96,7 +97,9 @@ impl Tube {
         // // generate normals and vertices for the current segment
 
         for j in 0..radial_segments {
-            let v = j as f32 / radial_segments as f32 * std::f32::consts::PI * 2.;
+            // std::f32::consts::PI * 2.
+            // (3.0 * std::f32::consts::PI / 2.0)
+            let v = j as f32 / radial_segments as f32 * (3.0 * std::f32::consts::PI / 2.0);
 
             let sin = v.sin();
             let cos = v.cos();
@@ -123,7 +126,7 @@ impl Tube {
 
     fn generate_indices(indices: &mut Vec<u32>, tubular_segments: usize, radial_segments: usize) {
         for i in 0..tubular_segments {
-            for j in 0..radial_segments {
+            for j in 0..radial_segments - 1 {
                 let next_j = (j + 1) % radial_segments;
                 let current = (i * radial_segments + j) as u32;
                 let next = ((i + 1) * radial_segments + j) as u32;
