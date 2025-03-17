@@ -62,14 +62,20 @@ fn main() {
 
     // debug menu
     let mut show_axes = false;
+    
+    // debug sphere and debug arrow
     let mut sphere_position = vec3(0.5, 0.3, 0.35);
     let mut show_debug_sphere = false;
     let mut show_debug_arrow = false;
+    
+    // tube debug
     let mut show_tube = false;
     let mut show_tube_indices = false;
     let mut show_tube_vertices = false;
     let mut show_tube_transparent = false;
+    let mut show_tube_arrows = false; 
 
+    // gl context init
     let context = window.gl();
     let mut gui = three_d::GUI::new(&context);
 
@@ -135,6 +141,62 @@ fn main() {
     );
 
     let mut gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), default_material.clone());
+
+    // tube arrows
+
+    let mut tube_arrows = vec![];
+
+    let arrow_scale = Mat4::from_nonuniform_scale(0.3, 0.7, 0.7);
+    
+    for tangent in tube.tangents.iter() {
+        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+        arrow.transform(arrow_scale).unwrap();
+
+        let rotation = arrow_to_dir_pos(Point3::origin(), tangent.direction);
+        arrow.transform(rotation).unwrap();
+
+        arrow.transform(Mat4::from_translation(tangent.point)).unwrap();
+
+        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
+            albedo: Srgba { r: 255, g: 255, b: 0, a: 0 },
+            ..Default::default()
+        }));
+    }
+
+    for normal in tube.normals.iter() {
+        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+        arrow.transform(arrow_scale).unwrap();
+
+        let rotation = arrow_to_dir_pos(Point3::origin(), normal.direction);
+        arrow.transform(rotation).unwrap();
+
+        arrow.transform(Mat4::from_translation(normal.point)).unwrap();
+
+        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
+            albedo: Srgba {
+                r: 190,
+                g: 100,
+                b: 0,
+                a: 0,
+            },
+            ..Default::default()
+        }));
+    }
+
+    for binormal in tube.binormals.iter() {
+        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
+        arrow.transform(arrow_scale).unwrap();
+
+        let rotation = arrow_to_dir_pos(Point3::origin(), binormal.direction);
+        arrow.transform(rotation).unwrap();
+
+        arrow.transform(Mat4::from_translation(binormal.point)).unwrap();
+
+        tube_arrows.push(Gm::new(Mesh::new(&context, &arrow), PhysicalMaterial {
+            albedo: Srgba::GREEN,
+            ..Default::default()
+        }));
+    }
 
     // tube wireframe
     let wireframe_material = PhysicalMaterial::new_opaque(
@@ -204,6 +266,7 @@ fn main() {
                         ui.checkbox(&mut show_tube_vertices, "Display tube vertices");
                         ui.checkbox(&mut show_tube_indices, "Display tube indices");
                         ui.checkbox(&mut show_tube_transparent, "Display tube as transparent");
+                        ui.checkbox(&mut show_tube_arrows, "Display tube vector arrows");
                     }
 
                     if show_debug_sphere {
@@ -301,6 +364,12 @@ fn main() {
                     if show_tube_indices {
                         for edge in edges.into_iter() {
                             edge.render(&camera, &[&ambient, &directional]);
+                        }
+                    }
+
+                    if show_tube_arrows {
+                        for arrow in tube_arrows.iter() {
+                            arrow.render(&camera, &[&ambient, &directional]);
                         }
                     }
                 }
