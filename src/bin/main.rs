@@ -181,30 +181,6 @@ fn main() {
         ));
     }
 
-    // 
-    for (curve_index, point) in tube.center_points.iter().enumerate() {
-        let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-        arrow.transform(arrow_scale).unwrap();
-
-        let rotation = arrow_to_dir_pos(Point3::origin(), tube.normals[curve_index]);
-        arrow.transform(rotation).unwrap();
-
-        arrow.transform(Mat4::from_translation(*point)).unwrap();
-
-        tube_arrows.push(Gm::new(
-            Mesh::new(&context, &arrow),
-            PhysicalMaterial {
-                albedo: Srgba {
-                    r: 255,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                },
-                ..Default::default()
-            },
-        ));
-    }
-
     for (curve_index, point) in tube.center_points.iter().enumerate() {
         let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
         arrow.transform(arrow_scale).unwrap();
@@ -416,29 +392,6 @@ fn main() {
             }
 
             tube_arrows.clear();
-
-            for (curve_index, point) in tube.center_points.iter().enumerate() {
-                let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
-                arrow.transform(arrow_scale).unwrap();
-        
-                let rotation = arrow_to_dir_pos(Point3::origin(), tube.normals[curve_index]);
-                arrow.transform(rotation).unwrap();
-        
-                arrow.transform(Mat4::from_translation(*point)).unwrap();
-        
-                tube_arrows.push(Gm::new(
-                    Mesh::new(&context, &arrow),
-                    PhysicalMaterial {
-                        albedo: Srgba {
-                            r: 255,
-                            g: 0,
-                            b: 0,
-                            a: 0,
-                        },
-                        ..Default::default()
-                    },
-                ));
-            }
 
             for (curve_index, point) in tube.center_points.iter().enumerate() {
                 let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
