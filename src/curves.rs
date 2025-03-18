@@ -1,4 +1,4 @@
-use three_d::{InnerSpace, Mat4, MetricSpace, Transform, Vec3, Vector3, radians};
+use three_d::{InnerSpace, MetricSpace, Vec3, Vector3};
 
 pub struct FrenetFrame {
     pub tangents: Vec<Vec3>,
@@ -141,23 +141,6 @@ pub trait Curve {
             tangents.push(self.get_tangent_at(u));
         }
 
-        // Initialize first normal and binormal
-        // let mut normal = Vector3 {
-        //     x: 0.0,
-        //     y: 0.0,
-        //     z: 0.0,
-        // };
-        let tx = tangents[0].x.abs();
-        let ty = tangents[0].y.abs();
-        let tz = tangents[0].z.abs();
-        let min = tx.min(ty).min(tz);
-
-        let direction = Vector3 {
-            x: 0.,
-            y: 1.,
-            z: 0.,
-        };
-
         let p = self.get_point(0.).unwrap();
 
         let camera = Vector3::new(0., 0., 2.);
@@ -166,16 +149,6 @@ pub trait Curve {
 
         let normal = perpendicular_vector(tangents[0], direction);
 
-        // if tx <= min {
-        //     normal.x = 1.0;
-        // } else if ty <= min {
-        //     normal.y = 1.0;
-        // } else {
-        //     normal.z = 1.0;
-        // }
-
-        // let mut vec = tangents[0].cross(normal).normalize();
-        // normals.push(tangents[0].cross(vec));
         normals.push(normal.normalize());
         binormals.push(tangents[0].cross(normals[0]));
 
@@ -189,21 +162,12 @@ pub trait Curve {
 
             let direction = camera - p;
 
-            // let normal = Vector3::new(tangents[i].x, 0.0, -tangents[i].z).normalize();
             let normal = perpendicular_vector(tangents[0], direction);
             normals.push(normal.normalize());
             binormals.push(tangents[i].cross(normals[i]));
-
-            // vec = tangents[i - 1].cross(tangents[i]);
-            // if vec.magnitude() > f32::EPSILON {
-            //     let vec = vec.normalize();
-            //     let theta = (tangents[i - 1].dot(tangents[i]).clamp(-1.0, 1.0));
-            //     let rot_mat = Mat4::from_axis_angle(vec, radians(theta));
-            //     normals[i] = rot_mat.transform_vector(normals[i]);
-            // }
-            // binormals[i] = tangents[i].cross(normals[i]).normalize();
         }
 
+        //  later if needed for closed curves
         // if closed {
         //     let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
         //     if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
