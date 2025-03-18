@@ -6,6 +6,18 @@ pub struct FrenetFrame {
     pub binormals: Vec<Vec3>,
 }
 
+/// Computes a perpendicular vector to `v` that is as close as possible to `preferred_direction`.
+fn perpendicular_vector(v: Vector3<f32>, preferred_direction: Vector3<f32>) -> Vector3<f32> {
+    let dot_product = v.dot(preferred_direction);
+    let v_norm_sq = v.magnitude2();
+
+    // Project preferred_direction onto v
+    let projection = (dot_product / v_norm_sq) * v;
+
+    // Subtract projection to get a perpendicular component
+    preferred_direction - projection
+}
+
 pub trait Curve {
     /// Returns the number of divisions for arc length calculations.
     fn arc_length_divisions(&self) -> usize {
@@ -130,54 +142,79 @@ pub trait Curve {
         }
 
         // Initialize first normal and binormal
-        let mut normal = Vector3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        };
+        // let mut normal = Vector3 {
+        //     x: 0.0,
+        //     y: 0.0,
+        //     z: 0.0,
+        // };
         let tx = tangents[0].x.abs();
         let ty = tangents[0].y.abs();
         let tz = tangents[0].z.abs();
         let min = tx.min(ty).min(tz);
 
-        if tx <= min {
-            normal.x = 1.0;
-        } else if ty <= min {
-            normal.y = 1.0;
-        } else {
-            normal.z = 1.0;
-        }
+        let direction = Vector3 {
+            x: 0.,
+            y: 1.,
+            z: 0.,
+        };
 
-        let mut vec = tangents[0].cross(normal).normalize();
-        normals.push(tangents[0].cross(vec));
+        let p = self.get_point(0.).unwrap();
+
+        let camera = Vector3::new(0., 0., 2.);
+
+        let direction = camera - p;
+
+        let normal = perpendicular_vector(tangents[0], direction);
+
+        // if tx <= min {
+        //     normal.x = 1.0;
+        // } else if ty <= min {
+        //     normal.y = 1.0;
+        // } else {
+        //     normal.z = 1.0;
+        // }
+
+        // let mut vec = tangents[0].cross(normal).normalize();
+        // normals.push(tangents[0].cross(vec));
+        normals.push(normal.normalize());
         binormals.push(tangents[0].cross(normals[0]));
 
         // Compute subsequent normals and binormals
         for i in 1..=segments {
-            normals.push(normals[i - 1].clone());
-            binormals.push(binormals[i - 1].clone());
+            let u = i as f32 / segments as f32;
 
-            vec = tangents[i - 1].cross(tangents[i]);
-            if vec.magnitude() > f32::EPSILON {
-                let vec = vec.normalize();
-                let theta = (tangents[i - 1].dot(tangents[i]).clamp(-1.0, 1.0));
-                let rot_mat = Mat4::from_axis_angle(vec, radians(theta));
-                normals[i] = rot_mat.transform_vector(normals[i]);
-            }
-            binormals[i] = tangents[i].cross(normals[i]).normalize();
+            let p = self.get_point(u).unwrap();
+
+            let camera = Vector3::new(0., 0., 2.);
+
+            let direction = camera - p;
+
+            // let normal = Vector3::new(tangents[i].x, 0.0, -tangents[i].z).normalize();
+            let normal = perpendicular_vector(tangents[0], direction);
+            normals.push(normal.normalize());
+            binormals.push(tangents[i].cross(normals[i]));
+
+            // vec = tangents[i - 1].cross(tangents[i]);
+            // if vec.magnitude() > f32::EPSILON {
+            //     let vec = vec.normalize();
+            //     let theta = (tangents[i - 1].dot(tangents[i]).clamp(-1.0, 1.0));
+            //     let rot_mat = Mat4::from_axis_angle(vec, radians(theta));
+            //     normals[i] = rot_mat.transform_vector(normals[i]);
+            // }
+            // binormals[i] = tangents[i].cross(normals[i]).normalize();
         }
 
-        if closed {
-            let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
-            if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
-                theta = -theta;
-            }
-            for i in 1..=segments {
-                let rot_mat = Mat4::from_axis_angle(tangents[i], radians(theta * i as f32));
-                normals[i] = rot_mat.transform_vector(normals[i]);
-                binormals[i] = tangents[i].cross(normals[i]);
-            }
-        }
+        // if closed {
+        //     let mut theta = normals[0].dot(normals[segments]).clamp(-1.0, 1.0) / segments as f32;
+        //     if tangents[0].dot(normals[0].cross(normals[segments])) > 0.0 {
+        //         theta = -theta;
+        //     }
+        //     for i in 1..=segments {
+        //         let rot_mat = Mat4::from_axis_angle(tangents[i], radians(theta * i as f32));
+        //         normals[i] = rot_mat.transform_vector(normals[i]);
+        //         binormals[i] = tangents[i].cross(normals[i]);
+        //     }
+        // }
 
         FrenetFrame {
             tangents,

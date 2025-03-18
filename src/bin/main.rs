@@ -389,18 +389,23 @@ fn main() {
         // tube
         // horrible performance
         if show_tube {
-            let tube = Tube::new(&curve, tubular_segments, tubular_closed, tubular_radius, tubular_radial_segments);
-            
+            let tube = Tube::new(
+                &curve,
+                tubular_segments,
+                tubular_closed,
+                tubular_radius,
+                tubular_radial_segments,
+            );
+
             cpu_tube = CpuMesh {
                 positions: three_d::Positions::F32(tube.vertices),
                 indices: three_d::Indices::U32(tube.indices),
                 ..Default::default()
             };
-        
+
             cpu_tube.compute_normals();
 
             gm_tube = Gm::new(Mesh::new(&context, &cpu_tube), default_material.clone());
-
 
             if show_tube_transparent {
                 gm_tube.material = transparent_material.clone();
@@ -438,12 +443,12 @@ fn main() {
             for (curve_index, point) in tube.center_points.iter().enumerate() {
                 let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
                 arrow.transform(arrow_scale).unwrap();
-        
+
                 let rotation = arrow_to_dir_pos(Point3::origin(), tube.tangents_frame[curve_index]);
                 arrow.transform(rotation).unwrap();
-        
+
                 arrow.transform(Mat4::from_translation(*point)).unwrap();
-        
+
                 tube_arrows.push(Gm::new(
                     Mesh::new(&context, &arrow),
                     PhysicalMaterial {
@@ -457,16 +462,16 @@ fn main() {
                     },
                 ));
             }
-        
+
             for (curve_index, point) in tube.center_points.iter().enumerate() {
                 let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
                 arrow.transform(arrow_scale).unwrap();
-        
+
                 let rotation = arrow_to_dir_pos(Point3::origin(), tube.normals_frame[curve_index]);
                 arrow.transform(rotation).unwrap();
-        
+
                 arrow.transform(Mat4::from_translation(*point)).unwrap();
-        
+
                 tube_arrows.push(Gm::new(
                     Mesh::new(&context, &arrow),
                     PhysicalMaterial {
@@ -480,16 +485,17 @@ fn main() {
                     },
                 ));
             }
-        
+
             for (curve_index, point) in tube.center_points.iter().enumerate() {
                 let mut arrow = CpuMesh::arrow(0.9, 0.5, 16);
                 arrow.transform(arrow_scale).unwrap();
-        
-                let rotation = arrow_to_dir_pos(Point3::origin(), tube.binormals_frame[curve_index]);
+
+                let rotation =
+                    arrow_to_dir_pos(Point3::origin(), tube.binormals_frame[curve_index]);
                 arrow.transform(rotation).unwrap();
-        
+
                 arrow.transform(Mat4::from_translation(*point)).unwrap();
-        
+
                 tube_arrows.push(Gm::new(
                     Mesh::new(&context, &arrow),
                     PhysicalMaterial {
